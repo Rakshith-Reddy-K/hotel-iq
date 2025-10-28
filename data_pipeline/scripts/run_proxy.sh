@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # UPDATE THESE
-PROJECT="friendly-magnet-476417-c2"
+PROJECT="hotel-iq"
 REGION="us-east4"
 INSTANCE="hotel-iq"
 

@@ -81,7 +81,9 @@ def create_rooms_table():
                     price_range_max DECIMAL(10, 2),
                     
                     description TEXT,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    
+                    CONSTRAINT rooms_hotel_id_room_type_unique UNIQUE (hotel_id, room_type)
                 );
             """)
             
@@ -108,7 +110,10 @@ def create_reviews_table():
                     review_date DATE,
                     source VARCHAR(50) DEFAULT 'tripadvisor',
                     
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    
+                    CONSTRAINT reviews_hotel_reviewer_date_unique 
+                    UNIQUE (hotel_id, reviewer_name, review_date)       
                 );
             """)
             
@@ -125,8 +130,10 @@ def create_amenities_table():
                     hotel_id INTEGER REFERENCES hotels(hotel_id) ON DELETE CASCADE,
                     category VARCHAR(50), -- 'connectivity', 'dining', 'recreation', 'services'
                     description TEXT,
-                    details TEXT
+                    details TEXT,
+                    CONSTRAINT amenities_hotel_id_name_unique UNIQUE (hotel_id, category) 
                    );
+                    
             """)
             
             conn.commit()
@@ -148,7 +155,8 @@ def create_policies_table():
                     children_policy TEXT,
                     extra_person_policy TEXT,
                     cancellation_policy TEXT,
-                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    CONSTRAINT policies_hotel_id_unique UNIQUE (hotel_id)
                 );
             """)
 

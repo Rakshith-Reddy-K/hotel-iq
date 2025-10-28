@@ -5,7 +5,8 @@ from datetime import datetime, timedelta
 from src.extract import extract_metadata,extract_reviews,join_metadata_and_reviews
 from src.transform import preprocess_reviews_data
 from src.validation import validate_data
-from src.load_to_database import save_reviews_to_db,save_metadata_to_db,save_raw_data_to_gcs
+from data_pipeline.sql.load_to_database import load_all_hotel_data_to_database
+from sql.queries import create_all_tables
 
 default_args = {
     'owner': 'iq-team',
@@ -33,11 +34,6 @@ extract_reviews_task = PythonOperator(
     python_callable=extract_reviews,
     dag=dag
 )
-
-join_data = PythonOperator(
-        task_id='join_metadata_and_reviews',
-        python_callable=join_metadata_and_reviews,
-)
     
 data_validation = PythonOperator(
         task_id='validate_data',
@@ -49,29 +45,14 @@ preprocess = PythonOperator(
     python_callable=preprocess_reviews_data,
 )
 
-save_raw_data = PythonOperator(
-    task_id='save_raw_data_to_gcs',
-    python_callable=save_raw_data_to_gcs,
+create_tables_in_database = PythonOperator(
+    task_id='create_tables',
+    python_callable=create_all_tables,
 )
 
-save_metadata_to_database = PythonOperator(
+save_data_to_database = PythonOperator(
     task_id='save_metadata_to_database',
-    python_callable=save_metadata_to_db,
+    python_callable=load_all_hotel_data_to_database,
 )
 
-save_reviews_to_database = PythonOperator(
-    task_id='save_reviews_to_database',
-    python_callable=save_reviews_to_db,
-)
-
-# Step 1: Extract metadata and reviews in parallel
-[extract_metadata_task, extract_reviews_task] >> join_data
-
-# Step 2: After joining, save raw data and preprocess in parallel
-join_data >> [save_raw_data, preprocess]
-
-# Step 3: Validate after preprocessing
-preprocess >> data_validation
-
-# Step 4: After validation passes, save to database in parallel
-data_validation >> [save_metadata_to_database, save_reviews_to_database]
+[extract_metadata_task, extract_reviews_task] >> preprocess >> data_validation >> create_tables_in_database >> save_data_to_database

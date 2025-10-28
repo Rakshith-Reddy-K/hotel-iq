@@ -50,7 +50,7 @@ x-airflow-common: &airflow-common
   # and uncomment the "build" line below, Then run `docker-compose build` to build the images.
   image: ${AIRFLOW_IMAGE_NAME:-apache/airflow:2.10.2}
   env_file:
-    - .env
+    - .env.airflow
   # build: .
   environment: &airflow-common-env
     AIRFLOW__CORE__EXECUTOR: CeleryExecutor
@@ -88,6 +88,8 @@ x-airflow-common: &airflow-common
 services:
   postgres:
     image: postgres:13
+    ports:
+      - "5433:5432"
     environment:
       POSTGRES_USER: airflow
       POSTGRES_PASSWORD: airflow

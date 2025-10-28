@@ -208,3 +208,5 @@ __marimo__/
 logs/
 cloud-sql-proxy
 intermediate/
+.python-version
+.env.*

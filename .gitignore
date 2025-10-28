@@ -210,3 +210,4 @@ cloud-sql-proxy
 intermediate/
 .python-version
 .env.*
+*.DS_Store

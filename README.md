@@ -198,9 +198,3 @@ python -c "from sql.load_to_database import load_all_hotel_data_to_database; pri
 ```
 
 ---
-
-If you want, I can:
-
-- Generate a `.env.example` with recommended variable names.
-- Add a small example script to call `load_all_hotel_data_to_database`.
-- Add simple Airflow run instructions specific to the docker-compose in this repo.

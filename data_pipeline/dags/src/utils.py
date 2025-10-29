@@ -190,6 +190,48 @@ def get_reviews_for_hotels(hotel_csv_path: str, reviews_csv_path: str, output_cs
 
 # ======================= ENRICHMENT UTILITIES =======================
 
+def validate_and_fix_json(json_string: str) -> Optional[Dict]:
+    """
+    Validate and attempt to fix common JSON issues
+    
+    Args:
+        json_string: Raw JSON string to validate and fix
+        
+    Returns:
+        Parsed JSON dict if successful, None if failed
+    """
+    try:
+        # First try to parse as-is
+        return json.loads(json_string)
+    except json.JSONDecodeError as e:
+        logger.warning(f"Initial JSON parse failed: {e}")
+        
+        # Try common fixes
+        fixed_json = json_string
+        
+        # Fix 1: Remove trailing commas
+        fixed_json = re.sub(r',\s*}', '}', fixed_json)
+        fixed_json = re.sub(r',\s*]', ']', fixed_json)
+        
+        # Fix 2: Fix unquoted property names
+        fixed_json = re.sub(r'(\w+):', r'"\1":', fixed_json)
+        
+        # Fix 3: Fix single quotes to double quotes
+        fixed_json = re.sub(r"'([^']*)':", r'"\1":', fixed_json)
+        
+        # Fix 4: Remove any content after the last }
+        last_brace = fixed_json.rfind('}')
+        if last_brace != -1:
+            fixed_json = fixed_json[:last_brace + 1]
+        
+        try:
+            return json.loads(fixed_json)
+        except json.JSONDecodeError as e2:
+            logger.error(f"JSON still invalid after fixes: {e2}")
+            logger.error(f"Original content: {json_string[:500]}")
+            logger.error(f"Fixed content: {fixed_json[:500]}")
+            return None
+
 def extract_hotel_data(hotel_name: str, location: str, api_key: Optional[str] = None) -> Optional[Dict]:
     """
     Extract comprehensive hotel data using Perplexity API.
@@ -450,6 +492,10 @@ Begin your search and provide the complete JSON response matching the exact sche
             {"role": "system", "content": "You are a helpful assistant that returns structured JSON data."},
             {"role": "user", "content": prompt}
         ],
+      "search_domain_filter":[
+        "expedia.com",
+        "booking.com"
+    ],
         "temperature": 0.2,
         "max_tokens": 8000,
 
@@ -463,18 +509,38 @@ Begin your search and provide the complete JSON response matching the exact sche
         result = response.json()
         content = result['choices'][0]['message']['content']
         
+        # Extract JSON from markdown code blocks
         if '```json' in content:
             json_start = content.find('```json') + 7
             json_end = content.find('```', json_start)
+            if json_end == -1:
+                logger.error(f"No closing ``` found for JSON block in hotel: {hotel_name}")
+                return None
             content = content[json_start:json_end].strip()
         elif '```' in content:
             json_start = content.find('```') + 3
             json_end = content.find('```', json_start)
+            if json_end == -1:
+                logger.error(f"No closing ``` found for code block in hotel: {hotel_name}")
+                return None
             content = content[json_start:json_end].strip()
+        
+        # Log the extracted content for debugging
+        logger.debug(f"Extracted content for {hotel_name}: {content[:200]}...")
+        
+        # Validate JSON before parsing
+        if not content.strip():
+            logger.error(f"Empty content extracted for hotel: {hotel_name}")
+            return None
             
-        hotel_data = json.loads(content)
-        logger.info(f"Successfully retrieved data for hotel: {hotel_name}")
-        return hotel_data
+        # Try to parse JSON with better error handling
+        hotel_data = validate_and_fix_json(content)
+        if hotel_data:
+            logger.info(f"Successfully retrieved data for hotel: {hotel_name}")
+            return hotel_data
+        else:
+            logger.error(f"Failed to parse JSON for hotel: {hotel_name}")
+            return None
         
     except Exception as e:
         logger.error(f"Failed to retrieve data for hotel {hotel_name}: {str(e)}")

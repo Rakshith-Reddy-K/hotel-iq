@@ -1,6 +1,6 @@
 import json
 from typing import Dict, List, Optional
-from db_pool import db_pool
+from sql.db_pool import db_pool
 
 def list_tables():
     """Get connection from pool and list all tables"""

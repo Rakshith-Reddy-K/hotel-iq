@@ -5,3 +5,7 @@ python-dotenv
 psycopg2-binary
 google-cloud-storage
 apache-airflow
+typing-extensions
+openpyxl
+jsonschema
+colorlog

@@ -50,7 +50,7 @@ x-airflow-common: &airflow-common
   # and uncomment the "build" line below, Then run `docker-compose build` to build the images.
   image: ${AIRFLOW_IMAGE_NAME:-apache/airflow:2.10.2}
   env_file:
-    - .env.airflow
+    - .env
   # build: .
   environment: &airflow-common-env
     AIRFLOW__CORE__EXECUTOR: CeleryExecutor
@@ -66,9 +66,22 @@ x-airflow-common: &airflow-common
     # See https://airflow.apache.org/docs/apache-airflow/stable/administration-and-deployment/logging-monitoring/check-health.html#scheduler-health-check-server
     # yamllint enable rule:line-length
     AIRFLOW__SCHEDULER__ENABLE_HEALTH_CHECK: "true"
+    # Hotel Data Pipeline Configuration
+    PERPLEXITY_API_KEY: ${PERPLEXITY_API_KEY:-}
+    LOCAL_CSV_PATH: "/opt/airflow/output"
+    CLOUD_DB_HOST: ${CLOUD_DB_HOST}
+    CLOUD_DB_PORT: ${CLOUD_DB_PORT}
+    CLOUD_DB_NAME: ${CLOUD_DB_NAME}
+    CLOUD_DB_USER: ${CLOUD_DB_USER}
+    CLOUD_DB_PASSWORD: ${CLOUD_DB_PASSWORD}
+    GCS_RAW_HOTELS_DATA_PATH: ${GCS_RAW_HOTELS_DATA_PATH}
+    GCS_RAW_REVIEWS_DATA_PATH: ${GCS_RAW_REVIEWS_DATA_PATH}
+    GCS_BUCKET_NAME: ${GCS_BUCKET_NAME}
+    PROJECT_ID: ${PROJECT_ID}
+    GOOGLE_APPLICATION_CREDENTIALS: /opt/airflow/config/gcp-service-account.json
     # WARNING: Use _PIP_ADDITIONAL_REQUIREMENTS option ONLY for a quick checks
     # for other purpose (development, test and especially production usage) build/extend Airflow image.
-    _PIP_ADDITIONAL_REQUIREMENTS: ${_PIP_ADDITIONAL_REQUIREMENTS:-}
+    _PIP_ADDITIONAL_REQUIREMENTS: ""
     # The following line can be used to set a custom config file, stored in the local config folder
     # If you want to use it, outcomment it and replace airflow.cfg with the name of your config file
     # AIRFLOW_CONFIG: '/opt/airflow/config/airflow.cfg'
@@ -77,7 +90,12 @@ x-airflow-common: &airflow-common
     - ${AIRFLOW_PROJ_DIR:-.}/logs:/opt/airflow/logs
     - ${AIRFLOW_PROJ_DIR:-.}/config:/opt/airflow/config
     - ${AIRFLOW_PROJ_DIR:-.}/plugins:/opt/airflow/plugins
+    - ${AIRFLOW_PROJ_DIR:-.}/Data:/opt/airflow/data
+    - ${AIRFLOW_PROJ_DIR:-.}/output:/opt/airflow/output
+    - ${AIRFLOW_PROJ_DIR:-.}/sql:/opt/airflow/sql
+    - ${AIRFLOW_PROJ_DIR:-.}/extra:/opt/airflow/extra
     - ./requirements.txt:/requirements.txt
+    - ${AIRFLOW_PROJ_DIR:-.}/config/gcp-service-account.json:/opt/airflow/config/gcp-service-account.json:ro
   user: "${AIRFLOW_UID:-50000}:0"
   depends_on: &airflow-common-depends-on
     redis:

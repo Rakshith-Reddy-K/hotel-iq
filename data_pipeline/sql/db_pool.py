@@ -21,11 +21,11 @@ class DatabasePool:
             self._pool = pool.ThreadedConnectionPool(
                 minconn=1,
                 maxconn=20,  # Adjust based on your needs
-                host=os.getenv('DB_HOST'),
-                port=os.getenv('DB_PORT'),
-                database=os.getenv('DB_NAME'),
-                user=os.getenv('DB_USER'),
-                password=os.getenv('DB_PASSWORD')
+                host=os.getenv('CLOUD_DB_HOST'),
+                port=os.getenv('CLOUD_DB_PORT'),
+                database=os.getenv('CLOUD_DB_NAME'),
+                user=os.getenv('CLOUD_DB_USER'),
+                password=os.getenv('CLOUD_DB_PASSWORD')
             )
             print("Connection pool created successfully")
         except Exception as e:

@@ -46,7 +46,7 @@ extract_hotels_task = PythonOperator(
     python_callable=extract_metadata,
     op_kwargs={
         'city': 'Boston',
-        'sample_size': 20,
+        'sample_size': 50,
         'random_seed': 42,
         'offering_path': 'data/raw/hotels.txt',
         'output_dir': 'output'

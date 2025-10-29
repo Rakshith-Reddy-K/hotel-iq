@@ -21,7 +21,7 @@ This README explains how to set up the environment, run the pipeline, and the co
 1. Clone repo and change to pipeline folder
 
 ```bash
-cd /mnt/d/MLOps_Project/hotel-iq/data_pipeline
+cd [your_local_folder]/hotel-iq/data_pipeline
 ```
 
 2. Install Python dependencies
@@ -126,10 +126,28 @@ print(results)
   - data_pipeline_airflow.py
     - Airflow DAG wiring extraction, transform, validation, and loader tasks.
   - src/
-    - bucket_util.py — helper utilities for cloud bucket interaction (if present).
-    - extract.py — extraction functions and helpers (download/extract metadata & reviews).
-    - transform.py — transformation / preprocessing functions.
-    - validation.py — data validation functions.
+    - extract.py — functions to download and save raw hotel metadata and reviews (source files).
+    - transform.py — lightweight preprocessing helpers (e.g., review cleanup, city filtering).
+    - validation.py — simple data checks and assertions before load.
+    - bucket_util.py — optional helpers for reading/writing cloud storage buckets.
+
+Transform helpers (example functions from transform module)
+
+- extract_reviews_based_on_city(city, output_dir)
+
+  - Filters the main reviews CSV to keep only reviews for hotels listed in the city-specific hotel CSV. Writes a city-specific reviews CSV and returns its path.
+
+- compute_aggregate_ratings(city, output_dir)
+
+  - Loads city reviews (or global reviews) and computes per-hotel aggregate ratings (overall, cleanliness, service, location, value). Writes hotel*ratings*{City}.csv.
+
+- enrich_hotels_perplexity(city, output_dir, delay_seconds, max_hotels)
+
+  - Iterates hotels, builds enrichment payloads (via extract_hotel_data_from_row), writes JSONL lines (one per hotel) used for downstream enrichment/ML/API calls. Throttles via delay_seconds.
+
+- merge_sql_tables(city, output_dir)
+
+  - Reads hotels CSV + enrichment JSONL (and ratings CSV if present), merges enrichment into normalized DataFrames (hotels, rooms, amenities, policies), and exports final CSVs ready for DB bulk load.
 
 - scripts/
 
@@ -149,7 +167,7 @@ print(results)
     - import_policies_from_local(...) — importer for policies.csv.
     - load_all_hotel_data_to_database(...) — orchestrator that runs the importers in order and returns a results dict.
   - queries.py
-    - SQL DDL helpers and insert helpers (create tables, insert helpers, etc).
+    - SQL DDL helpers to create tables and insert helper snippets. Useful to inspect schema expectations (primary keys, column types) which must match CSV headers listed in load_to_database.py.
   - test_connection.py
     - Simple script to validate DB connectivity and list tables.
 
@@ -178,11 +196,3 @@ print(results)
 ```bash
 python -c "from sql.load_to_database import load_all_hotel_data_to_database; print(load_all_hotel_data_to_database('intermediate/csv'))"
 ```
-
----
-
-If you want, I can:
-
-- Generate a `.env.example` with recommended variable names.
-- Add a small example script to call `load_all_hotel_data_to_database`.
-- Add simple Airflow run instructions specific to the docker-compose in this repo.

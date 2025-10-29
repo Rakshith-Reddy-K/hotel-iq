@@ -2,13 +2,15 @@ import os
 import logging
 from pathlib import Path
 
+from dotenv import load_dotenv
 import pandas as pd
 
 from .utils import load_offering_json, get_sample_hotels_by_city, load_reviews_json
+from .bucket_util import upload_file_to_gcs
 
 # Configure logging
 logger = logging.getLogger(__name__)
-
+load_dotenv()
 
 def _ensure_output_dir(output_dir: str) -> None:
     Path(output_dir).mkdir(parents=True, exist_ok=True)
@@ -27,7 +29,7 @@ def extract_metadata(
     city: str = 'Boston',
     sample_size: int = 25,
     random_seed: int = 42,
-    offering_path: str = 'Data/raw/offering 2.txt',
+    offering_path: str = 'data/raw/hotels.txt',
     output_dir: str = 'output'
 ):
     """
@@ -59,7 +61,7 @@ def extract_metadata(
         
         sample_df.to_csv(output_path, index=False)
         logger.info(f"Hotel metadata saved to: {output_path}")
-        
+        upload_file_to_gcs(output_path, os.getenv('GCS_RAW_HOTELS_DATA_PATH'))
         return output_path
         
     except Exception as e:
@@ -68,7 +70,7 @@ def extract_metadata(
 
 
 def extract_reviews(
-    reviews_path: str = 'Data/raw/review.txt',
+    reviews_path: str = 'data/raw/reviews.txt',
     output_dir: str = 'output'
 ):
     """
@@ -96,6 +98,7 @@ def extract_reviews(
         reviews_df.to_csv(output_path, index=False)
         logger.info(f"Normalized reviews saved to: {output_path}")
         
+        #upload_file_to_gcs(output_path, os.getenv('GCS_RAW_REVIEWS_DATA_PATH'))
         return output_path
         
     except Exception as e:

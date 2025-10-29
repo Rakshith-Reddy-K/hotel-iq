@@ -211,3 +211,6 @@ intermediate/
 .python-version
 .env.*
 *.DS_Store
+config/
+output/
+data/

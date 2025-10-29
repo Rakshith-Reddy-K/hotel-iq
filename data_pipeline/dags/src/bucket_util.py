@@ -19,12 +19,12 @@ def get_bucket():
         raise ValueError("Bucket does not exist")
     return bucket
 
-def upload_file(local_path, blob_name):
+def upload_file_to_gcs(local_path, blob_name):
     bucket = get_bucket()
     blob = bucket.blob(blob_name)
     blob.upload_from_filename(local_path)
 
-def download_file(blob_name, local_path):
+def download_file_from_gcs(blob_name, local_path):
     bucket = get_bucket()
     blob = bucket.blob(blob_name)
     blob.download_to_filename(local_path)

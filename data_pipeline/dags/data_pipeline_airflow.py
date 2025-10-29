@@ -2,6 +2,11 @@ from airflow import DAG
 from airflow.operators.python_operator import PythonOperator
 from datetime import datetime, timedelta
 import os
+import sys
+
+parent_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if parent_dir not in sys.path:
+    sys.path.insert(0, parent_dir)
 
 # Import our custom functions
 from src.extract import extract_metadata, extract_reviews
@@ -21,7 +26,7 @@ default_args = {
     'start_date': datetime(2025, 1, 1),
     'email_on_failure': False,
     'email_on_retry': False,
-    'retries': 2,
+    'retries': 0,
     'retry_delay': timedelta(minutes=5),
     'catchup': False
 }
@@ -30,8 +35,7 @@ default_args = {
 dag = DAG(
     'hotel_data_pipeline',
     default_args=default_args,
-    description='Complete hotel data pipeline: extract → transform → enrich → validate → load',
-    schedule_interval='@daily',
+    description='Hotel Data pipeline',
     max_active_runs=1,
     tags=['hotel', 'data-pipeline', 'perplexity', 'reviews']
 )
@@ -42,9 +46,9 @@ extract_hotels_task = PythonOperator(
     python_callable=extract_metadata,
     op_kwargs={
         'city': 'Boston',
-        'sample_size': 25,
+        'sample_size': 20,
         'random_seed': 42,
-        'offering_path': 'Data/raw/offering 2.txt',
+        'offering_path': 'data/raw/hotels.txt',
         'output_dir': 'output'
     },
     dag=dag,
@@ -56,7 +60,7 @@ extract_reviews_task = PythonOperator(
     task_id='extract_reviews',
     python_callable=extract_reviews,
     op_kwargs={
-        'reviews_path': 'Data/raw/review.txt',
+        'reviews_path': 'data/raw/reviews.txt',
         'output_dir': 'output'
     },
     dag=dag,
@@ -94,7 +98,7 @@ enrich_hotels_task = PythonOperator(
     op_kwargs={
         'city': 'Boston',
         'output_dir': 'output',
-        'delay_seconds': 2,
+        'delay_seconds': 12,
         'max_hotels': None  # Process all hotels
     },
     dag=dag,
@@ -146,4 +150,4 @@ filter_city_reviews_task >> [compute_ratings_task, enrich_hotels_task]
 [compute_ratings_task, enrich_hotels_task] >> merge_tables_task >> create_tables_task
 
 # Step 4: Database operations
- create_tables_task >> load_to_db_task
+create_tables_task >> load_to_db_task

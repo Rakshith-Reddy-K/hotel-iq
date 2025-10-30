@@ -5,8 +5,8 @@ from pathlib import Path
 from dotenv import load_dotenv
 import pandas as pd
 
-from .utils import load_offering_json, get_sample_hotels_by_city, load_reviews_json
-from .bucket_util import upload_file_to_gcs
+from src.utils import load_offering_json, get_sample_hotels_by_city, load_reviews_json
+from src.bucket_util import upload_file_to_gcs
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -98,7 +98,7 @@ def extract_reviews(
         reviews_df.to_csv(output_path, index=False)
         logger.info(f"Normalized reviews saved to: {output_path}")
         
-        #upload_file_to_gcs(output_path, os.getenv('GCS_RAW_REVIEWS_DATA_PATH'))
+        upload_file_to_gcs(output_path, os.getenv('GCS_RAW_REVIEWS_DATA_PATH'))
         return output_path
         
     except Exception as e:

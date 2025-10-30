@@ -66,6 +66,7 @@ x-airflow-common: &airflow-common
     # See https://airflow.apache.org/docs/apache-airflow/stable/administration-and-deployment/logging-monitoring/check-health.html#scheduler-health-check-server
     # yamllint enable rule:line-length
     AIRFLOW__SCHEDULER__ENABLE_HEALTH_CHECK: "true"
+    PYTHONPATH: /opt/airflow:/opt/airflow/sql
     # Hotel Data Pipeline Configuration
     PERPLEXITY_API_KEY: ${PERPLEXITY_API_KEY:-}
     LOCAL_CSV_PATH: "/opt/airflow/output"
@@ -77,7 +78,9 @@ x-airflow-common: &airflow-common
     GCS_RAW_HOTELS_DATA_PATH: ${GCS_RAW_HOTELS_DATA_PATH}
     GCS_RAW_REVIEWS_DATA_PATH: ${GCS_RAW_REVIEWS_DATA_PATH}
     GCS_BUCKET_NAME: ${GCS_BUCKET_NAME}
-    PROJECT_ID: ${PROJECT_ID}
+    GCP_PROJECT_ID: ${GCP_PROJECT_ID}
+    GCP_REGION: ${GCP_REGION}
+    GCP_INSTANCE_NAME: ${GCP_INSTANCE_NAME}
     GOOGLE_APPLICATION_CREDENTIALS: /opt/airflow/config/gcp-service-account.json
     # WARNING: Use _PIP_ADDITIONAL_REQUIREMENTS option ONLY for a quick checks
     # for other purpose (development, test and especially production usage) build/extend Airflow image.
@@ -102,6 +105,8 @@ x-airflow-common: &airflow-common
       condition: service_healthy
     postgres:
       condition: service_healthy
+    cloud-sql-proxy:
+      condition: service_started
 
 services:
   postgres:
@@ -121,6 +126,20 @@ services:
       start_period: 5s
     restart: always
 
+  cloud-sql-proxy:
+    image: gcr.io/cloud-sql-connectors/cloud-sql-proxy:2.8.0
+    env_file:
+      - .env
+    command:
+      - "${GCP_PROJECT_ID}:${GCP_REGION}:${GCP_INSTANCE_NAME}"
+      - "--address=0.0.0.0"
+    environment:
+      - GOOGLE_APPLICATION_CREDENTIALS=/secrets/gcp-service-account.json
+    volumes:
+      - ${AIRFLOW_PROJ_DIR:-.}/config/gcp-service-account.json:/secrets/gcp-service-account.json:ro
+    ports:
+      - "5432:5432"
+    restart: always
   redis:
     # Redis is limited to 7.2-bookworm due to licencing change
     # https://redis.io/blog/redis-adopts-dual-source-available-licensing/

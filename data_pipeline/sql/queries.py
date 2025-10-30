@@ -1,10 +1,10 @@
 import json
 from typing import Dict, List, Optional
-from sql.db_pool import db_pool
+from sql.db_pool import get_connection
 
 def list_tables():
     """Get connection from pool and list all tables"""
-    with db_pool.get_connection() as conn:
+    with get_connection() as conn:
         with conn.cursor() as cursor:
             # Query to get all tables
             cursor.execute("""
@@ -28,7 +28,7 @@ def list_tables():
 
 def create_hotels_table():
     """Create the main hotels table"""
-    with db_pool.get_connection() as conn:
+    with get_connection() as conn:
         with conn.cursor() as cursor:
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS hotels (
@@ -66,7 +66,7 @@ def create_hotels_table():
 
 def create_rooms_table():
     """Create the rooms table"""
-    with db_pool.get_connection() as conn:
+    with get_connection() as conn:
         with conn.cursor() as cursor:
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS rooms (
@@ -92,7 +92,7 @@ def create_rooms_table():
 
 def create_reviews_table():
     """Create the reviews table"""
-    with db_pool.get_connection() as conn:
+    with get_connection() as conn:
         with conn.cursor() as cursor:
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS reviews (
@@ -122,7 +122,7 @@ def create_reviews_table():
 
 def create_amenities_table():
     """Create the amenities table"""
-    with db_pool.get_connection() as conn:
+    with get_connection() as conn:
         with conn.cursor() as cursor:
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS amenities (
@@ -141,7 +141,7 @@ def create_amenities_table():
 
 def create_policies_table():
     """Create the policies table"""
-    with db_pool.get_connection() as conn:
+    with get_connection() as conn:
         with conn.cursor() as cursor:
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS policies (
@@ -197,7 +197,7 @@ def insert_into_hotel_table(transformed_hotel: Dict) -> Optional[int]:
     Returns:
         hotel_id of inserted record or None if failed
     """
-    with db_pool.get_connection() as conn:
+    with get_connection() as conn:
         with conn.cursor() as cursor:
             try:
                 # Prepare JSONB fields
@@ -265,7 +265,7 @@ def insert_into_rooms_table(hotel_id: int, transformed_rooms: List[Dict]) -> int
     """
     inserted_count = 0
     
-    with db_pool.get_connection() as conn:
+    with get_connection() as conn:
         with conn.cursor() as cursor:
             try:
                 for room in transformed_rooms:
@@ -316,7 +316,7 @@ def insert_into_amenities_table(hotel_id: int, transformed_amenities: List[Dict]
     """
     inserted_count = 0
     
-    with db_pool.get_connection() as conn:
+    with get_connection() as conn:
         with conn.cursor() as cursor:
             try:
                 for amenity in transformed_amenities:
@@ -354,7 +354,7 @@ def insert_into_policies_table(hotel_id: int, transformed_policies: Dict) -> boo
     Returns:
         True if successful
     """
-    with db_pool.get_connection() as conn:
+    with get_connection() as conn:
         with conn.cursor() as cursor:
             try:
                 # Add hotel_id to policies data
@@ -402,7 +402,7 @@ def insert_into_reviews_table(hotel_id: int, transformed_reviews: List[Dict]) ->
     
     inserted_count = 0
     
-    with db_pool.get_connection() as conn:
+    with get_connection() as conn:
         with conn.cursor() as cursor:
             try:
                 for review in transformed_reviews:
@@ -441,7 +441,7 @@ def insert_into_reviews_table(hotel_id: int, transformed_reviews: List[Dict]) ->
 
 # def drop_all_tables():
     """Drop all tables (use with caution!)"""
-    with db_pool.get_connection() as conn:
+    with get_connection() as conn:
         with conn.cursor() as cursor:
             # Drop in reverse dependency order
             tables = ['policies', 'amenities', 'reviews', 'rooms', 'hotels']
@@ -455,7 +455,7 @@ def insert_into_reviews_table(hotel_id: int, transformed_reviews: List[Dict]) ->
 
 # def get_table_info(table_name):
     """Get detailed information about a specific table"""
-    with db_pool.get_connection() as conn:
+    with get_connection() as conn:
         with conn.cursor() as cursor:
             # Get column information
             cursor.execute("""

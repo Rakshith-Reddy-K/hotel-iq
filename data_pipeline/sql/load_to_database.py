@@ -6,7 +6,7 @@ from datetime import datetime
 from typing import Dict, List, Optional, Tuple
 from pathlib import Path
 from dotenv import load_dotenv
-from sql.db_pool import db_pool
+from sql.db_pool import get_connection
 from psycopg2.extras import execute_batch
 
 # Load environment variables
@@ -19,7 +19,7 @@ LOCAL_CSV_PATH = os.getenv("LOCAL_CSV_PATH", "intermediate/csv")
 
 def get_db_connection():
     """Get direct psycopg2 connection"""
-    return db_pool.get_connection()
+    return get_connection()
 
 def batch_upsert_csv(
     csv_file_path: str,

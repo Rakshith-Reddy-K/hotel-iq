@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from .utils import get_reviews_for_hotels, calculate_all_hotel_ratings, extract_hotel_data_from_row, merge_hotel_data, export_hotel_data_to_csv
+from src.utils import get_reviews_for_hotels, calculate_all_hotel_ratings, extract_hotel_data_from_row, merge_hotel_data, export_hotel_data_to_csv
 
 # Configure logging
 logger = logging.getLogger(__name__)

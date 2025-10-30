@@ -5,51 +5,65 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-class DatabasePool:
-    _instance = None
-    _pool = None
-    
-    def __new__(cls):
-        if cls._instance is None:
-            cls._instance = super(DatabasePool, cls).__new__(cls)
-            cls._instance._initialize_pool()
-        return cls._instance
-    
-    def _initialize_pool(self):
-        """Initialize connection pool"""
-        try:
-            self._pool = pool.ThreadedConnectionPool(
-                minconn=1,
-                maxconn=20,  # Adjust based on your needs
-                host=os.getenv('CLOUD_DB_HOST'),
-                port=os.getenv('CLOUD_DB_PORT'),
-                database=os.getenv('CLOUD_DB_NAME'),
-                user=os.getenv('CLOUD_DB_USER'),
-                password=os.getenv('CLOUD_DB_PASSWORD')
-            )
-            print("Connection pool created successfully")
-        except Exception as e:
-            print(f"Error creating connection pool: {e}")
-            raise
-    
-    @contextmanager
-    def get_connection(self):
-        """Get connection from pool with context manager"""
-        conn = self._pool.getconn()
-        try:
-            yield conn
-            conn.commit()
-        except Exception as e:
-            conn.rollback()
-            raise e
-        finally:
-            self._pool.putconn(conn)
-    
-    def close_all(self):
-        """Close all connections in pool"""
-        if self._pool:
-            self._pool.closeall()
-            print("All connections closed")
+# Module-level variable to store the pool
+_pool = None
 
-# Global pool instance
-db_pool = DatabasePool()
+
+def initialize_pool():
+    """Initialize connection pool"""
+    global _pool
+    
+    if _pool is not None:
+        return _pool
+    
+    try:
+        _pool = pool.ThreadedConnectionPool(
+            minconn=1,
+            maxconn=20,
+            host=os.getenv('CLOUD_DB_HOST'),
+            port=os.getenv('CLOUD_DB_PORT'),
+            database=os.getenv('CLOUD_DB_NAME'),
+            user=os.getenv('CLOUD_DB_USER'),
+            password=os.getenv('CLOUD_DB_PASSWORD')
+        )
+        print("Connection pool created successfully")
+        return _pool
+    except Exception as e:
+        print(f"Error creating connection pool: {e}")
+        raise
+
+
+def get_pool():
+    """Get the connection pool, initializing if necessary"""
+    global _pool
+    if _pool is None:
+        initialize_pool()
+    return _pool
+
+
+@contextmanager
+def get_connection():
+    """Get connection from pool with context manager"""
+    pool_instance = get_pool()
+    conn = pool_instance.getconn()
+    try:
+        yield conn
+        conn.commit()
+    except Exception as e:
+        conn.rollback()
+        raise e
+    finally:
+        pool_instance.putconn(conn)
+
+
+def close_all():
+    """Close all connections in pool"""
+    global _pool
+    if _pool:
+        _pool.closeall()
+        print("All connections closed")
+        _pool = None
+
+
+# Initialize pool on module import
+initialize_pool()

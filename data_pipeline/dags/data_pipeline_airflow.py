@@ -138,13 +138,13 @@ load_to_db_task = PythonOperator(
 
 # Define task dependencies
 # Step 1: Extract raw data
-# [extract_hotels_task, extract_reviews_task] >> filter_city_reviews_task
+[extract_hotels_task, extract_reviews_task] >> filter_city_reviews_task
 
-# # Step 2: Parallel processing
-# filter_city_reviews_task >> [compute_ratings_task, enrich_hotels_task]
+# Step 2: Parallel processing
+filter_city_reviews_task >> [compute_ratings_task, enrich_hotels_task]
 
-# # Step 3: Merge and Create tables
-# [compute_ratings_task, enrich_hotels_task] >> merge_tables_task >> create_tables_task
+# Step 3: Merge and Create tables
+[compute_ratings_task, enrich_hotels_task] >> merge_tables_task >> create_tables_task
 
 # Step 4: Database operations
-extract_hotels_task >> create_tables_task >> load_to_db_task
+create_tables_task >> load_to_db_task

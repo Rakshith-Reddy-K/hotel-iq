@@ -86,7 +86,7 @@ def compute_aggregate_ratings(
 def enrich_hotels_perplexity(
     city: str = 'Boston',
     output_dir: str = 'output',
-    delay_seconds: float = 2,
+    delay_seconds: float = 12,
     max_hotels: int = None
 ):
     city_token = city.title().replace(' ', '')
@@ -156,7 +156,8 @@ def merge_sql_tables(
                 obj = json.loads(line)
                 hid = obj.get('hotel_id')
                 data = obj.get('data')
-                if hid is not None and data:
+                # Only keep entries that have a non-null 'hotel' payload
+                if hid is not None and isinstance(data, dict) and data.get('hotel') is not None:
                     hotel_id_to_data[hid] = data
             except Exception:
                 continue

@@ -12,13 +12,9 @@ from psycopg2.extras import execute_batch
 # Load environment variables
 load_dotenv()
 
-# Configuration
 LOCAL_CSV_PATH = os.getenv("LOCAL_CSV_PATH", "intermediate/csv")
 
-# ============= CONNECTION MANAGEMENT =============
-
 def get_db_connection():
-    """Get direct psycopg2 connection"""
     return get_connection()
 
 def batch_upsert_csv(

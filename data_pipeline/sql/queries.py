@@ -3,7 +3,6 @@ from typing import Dict, List, Optional
 from sql.db_pool import get_connection
 
 def list_tables():
-    """Get connection from pool and list all tables"""
     with get_connection() as conn:
         with conn.cursor() as cursor:
             # Query to get all tables
@@ -27,7 +26,6 @@ def list_tables():
             return tables
 
 def create_hotels_table():
-    """Create the main hotels table"""
     with get_connection() as conn:
         with conn.cursor() as cursor:
             cursor.execute("""
@@ -65,7 +63,6 @@ def create_hotels_table():
             print("Hotels table created successfully")
 
 def create_rooms_table():
-    """Create the rooms table"""
     with get_connection() as conn:
         with conn.cursor() as cursor:
             cursor.execute("""
@@ -91,7 +88,6 @@ def create_rooms_table():
             print("Rooms table created successfully")
 
 def create_reviews_table():
-    """Create the reviews table"""
     with get_connection() as conn:
         with conn.cursor() as cursor:
             cursor.execute("""
@@ -121,7 +117,6 @@ def create_reviews_table():
             print(" Reviews table created successfully")
 
 def create_amenities_table():
-    """Create the amenities table"""
     with get_connection() as conn:
         with conn.cursor() as cursor:
             cursor.execute("""
@@ -164,7 +159,6 @@ def create_policies_table():
             print(" Policies table created successfully")
 
 def create_all_tables():
-    """Create all tables in the correct order"""
     try:
         print("Starting table creation...\n")
         
@@ -184,8 +178,6 @@ def create_all_tables():
     except Exception as e:
         print(f"Error creating tables: {e}")
         raise
-
-# ============= DATABASE INSERTION =============
 
 def insert_into_hotel_table(transformed_hotel: Dict) -> Optional[int]:
     """

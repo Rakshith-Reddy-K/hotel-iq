@@ -16,31 +16,25 @@ def get_bucket():
 
     client = storage.Client(project=GCP_PROJECT_ID)
     bucket = client.bucket(bucket_name)
-    
+    logger.info(f"Connected to bucket: {bucket.name}")
     if not bucket.exists():
         raise ValueError("Bucket does not exist")
     return bucket
 
-def upload_file_to_gcs(local_path, blob_name):
-    logger.info(f"Starting GCS upload: {local_path} -> {blob_name}")
+def upload_file_to_gcs(file_path, blob_name):
+    logger.info(f"Starting GCS upload: {file_path} -> {blob_name}")
+    if not os.path.exists(file_path):
+        logger.error(f"File not found: {file_path}")
+        raise FileNotFoundError(f"File not found: {file_path}")
     
-    if not os.path.exists(local_path):
-        logger.error(f"File not found: {local_path}")
-        raise FileNotFoundError(f"File not found: {local_path}")
-    
-    file_size = os.path.getsize(local_path)
+    file_size = os.path.getsize(file_path)
     logger.info(f"Local file size: {file_size:,} bytes")
     
     try:
         bucket = get_bucket()
-        logger.info(f"Connected to bucket: {bucket.name}")
-        
         blob = bucket.blob(blob_name)
         logger.info(f"Uploading to: gs://{bucket.name}/{blob_name}")
-        
-        blob.upload_from_filename(local_path)
-        
-        blob.reload()
+        blob.upload_from_filename(file_path)
         logger.info(f"Upload successful - Size: {blob.size:,} bytes")
         logger.info(f"GCS path: gs://{bucket.name}/{blob.name}")
         
@@ -48,16 +42,29 @@ def upload_file_to_gcs(local_path, blob_name):
         
     except Exception as e:
         logger.error(f"Upload failed: {e}")
-        logger.exception("Full error:")
 
 def download_file_from_gcs(blob_name, local_path):
-    bucket = get_bucket()
-    blob = bucket.blob(blob_name)
-    blob.download_to_filename(local_path)
+    try:
+        if not blob_name or not local_path:
+            raise ValueError("blob_name and local_path are required")
+        bucket = get_bucket()
+        blob = bucket.blob(blob_name)
+        if not blob.exists():
+            raise FileNotFoundError(f"Blob '{blob_name}' not found")
+        os.makedirs(os.path.dirname(local_path), exist_ok=True)
+        logger.info(f"Downloading from: gs://{bucket.name}/{blob_name}")
+        blob.download_to_filename(local_path)
+        logger.info(f"Download successful: {blob_name} -> {local_path}")
+        logger.info(f"Local path: {local_path}")
+
+        return True 
+    except Exception as e:
+        logger.info(f"Download failed: {e}")
+        return False
 
 def list_blobs(prefix=None):
     bucket = get_bucket()
     blobs = list(bucket.list_blobs(prefix=prefix))
     for blob in blobs:
-        print(blob.name)
+        logger.info(blob.name)
     return blobs

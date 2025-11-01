@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 load_dotenv()
 
 
-# ======================= HOTEL OFFERING UTILITIES =======================
+
 
 def load_offering_json(file_path: str) -> pd.DataFrame:
     hotel_data: List[Dict] = []
@@ -58,7 +58,6 @@ def get_sample_hotels_by_city(
     return city_df.sample(n=sample_size, random_state=random_seed)
 
 
-# ======================= REVIEWS UTILITIES =======================
 
 def clean_review_text(text):
     if not isinstance(text, str):
@@ -188,7 +187,6 @@ def get_reviews_for_hotels(hotel_csv_path: str, reviews_csv_path: str, output_cs
     return filtered_reviews
 
 
-# ======================= ENRICHMENT UTILITIES =======================
 
 def validate_and_fix_json(json_string: str) -> Optional[Dict]:
     """
@@ -201,28 +199,39 @@ def validate_and_fix_json(json_string: str) -> Optional[Dict]:
         Parsed JSON dict if successful, None if failed
     """
     try:
-        # First try to parse as-is
+        
+        if '{' in json_string and '}' in json_string:
+            first_brace = json_string.find('{')
+            last_brace = json_string.rfind('}')
+            if last_brace > first_brace:
+                json_string = json_string[first_brace:last_brace + 1]
         return json.loads(json_string)
     except json.JSONDecodeError as e:
         logger.warning(f"Initial JSON parse failed: {e}")
         
-        # Try common fixes
+
         fixed_json = json_string
         
-        # Fix 1: Remove trailing commas
+        # Remove trailing commas
         fixed_json = re.sub(r',\s*}', '}', fixed_json)
         fixed_json = re.sub(r',\s*]', ']', fixed_json)
         
-        # Fix 2: Fix unquoted property names
+        # FFix unquoted property names
         fixed_json = re.sub(r'(\w+):', r'"\1":', fixed_json)
         
-        # Fix 3: Fix single quotes to double quotes
+        # Fix single quotes to double quotes
         fixed_json = re.sub(r"'([^']*)':", r'"\1":', fixed_json)
         
-        # Fix 4: Remove any content after the last }
+        # Trim to the outermost braces if present
+        first_brace = fixed_json.find('{')
         last_brace = fixed_json.rfind('}')
-        if last_brace != -1:
-            fixed_json = fixed_json[:last_brace + 1]
+        if first_brace != -1 and last_brace != -1 and last_brace > first_brace:
+            fixed_json = fixed_json[first_brace:last_brace + 1]
+
+        # Escape raw newlines and tabs so long text stays valid inside strings
+        fixed_json = fixed_json.replace('\r\n', '\\n').replace('\n', '\\n').replace('\t', ' ')
+        # Remove remaining invalid control characters
+        fixed_json = re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f]', ' ', fixed_json)
         
         try:
             return json.loads(fixed_json)
@@ -258,233 +267,83 @@ def extract_hotel_data(hotel_name: str, location: str, api_key: Optional[str] = 
         "Content-Type": "application/json"
     }
 
-    prompt = f"""You are a hotel data researcher. I need you to gather comprehensive information about the following hotel:
+    not_found_json = '{"hotel": null, "rooms": null, "amenities": null, "policies": null, "special_features": null, "awards": null, "error": "Hotel doesn\'t exist"}'
+    header = (
+        "You are a hotel data researcher. Gather comprehensive information about:\n\n"
+        f"**Hotel Name:** {hotel_name}\n"
+        f"**Location:** {location}\n\n"
+        f"First verify the hotel exists at this location. If not, return: {not_found_json}\n\n"
+        "**OUTPUT RULES:**\n"
+        "- Return EXACTLY ONE JSON code block (no text before/after)\n"
+        "- Single JSON object (no top-level arrays)\n"
+        "- Escape newlines as \\n\n"
+        "- Use null for missing data\n"
+        "- All data types must match schema below\n\n"
+        "**REQUIRED DATA:**\n\n"
+        "1. **Hotel Main Info:**\n"
+        "   - official_name, star_rating (1-5), description (2-3 paragraphs, no bullets), address, year_opened (YYYY-MM-DD), last_renovation (YYYY-MM-DD), total_rooms, number_of_floors, additional_info (2-3 paragraphs, no bullets)\n\n"
+        "2. **Room Types:**\n"
+        "   - room_type, bed_configuration, room_size_sqft (integer only), max_occupancy, price_range_min/max (decimal XX.XX), description\n\n"
+        "3. **Amenities by Category:**\n"
+        "   - Room Amenities, Property Amenities, Dining, Services\n"
+        "   - Each with: category, description, details (JSON object)\n\n"
+        "4. **Policies:**\n"
+        "   - check_in_time (HH:MM:SS), check_out_time (HH:MM:SS), min_age_requirement, pet_policy, smoking_policy, children_policy, extra_person_policy, cancellation_policy\n\n"
+        "5. **Special Features & Awards:**\n"
+        "   - Arrays of strings\n\n"
+        "**SCHEMA:**\n"
+    )
+    schema_block = (
+        "```json\n"
+        "{\n"
+        "  \"hotel\": {\n"
+        "    \"official_name\": \"string (max 255)\",\n"
+        "    \"star_rating\": 4,\n"
+        "    \"description\": \"2-3 paragraphs prose, no bullets\",\n"
+        "    \"address\": \"string\",\n"
+        "    \"year_opened\": \"2015-01-01\",\n"
+        "    \"last_renovation\": \"2021-01-01\",\n"
+        "    \"total_rooms\": 261,\n"
+        "    \"number_of_floors\": 5,\n"
+        "    \"additional_info\": \"2-3 paragraphs prose, no bullets\"\n"
+        "  },\n"
+        "  \"rooms\": [\n"
+        "    {\n"
+        "      \"room_type\": \"string (max 100)\",\n"
+        "      \"bed_configuration\": \"string (max 100)\",\n"
+        "      \"room_size_sqft\": 280,\n"
+        "      \"max_occupancy\": 2,\n"
+        "      \"price_range_min\": 189.00,\n"
+        "      \"price_range_max\": 279.00,\n"
+        "      \"description\": \"string\"\n"
+        "    }\n"
+        "  ],\n"
+        "  \"amenities\": [\n"
+        "    {\n"
+        "      \"category\": \"string (max 50)\",\n"
+        "      \"description\": \"string\",\n"
+        "      \"details\": {}\n"
+        "    }\n"
+        "  ],\n"
+        "  \"policies\": {\n"
+        "    \"check_in_time\": \"15:00:00\",\n"
+        "    \"check_out_time\": \"11:00:00\",\n"
+        "    \"min_age_requirement\": 21,\n"
+        "    \"pet_policy\": \"string\",\n"
+        "    \"smoking_policy\": \"string\",\n"
+        "    \"children_policy\": \"string\",\n"
+        "    \"extra_person_policy\": \"string\",\n"
+        "    \"cancellation_policy\": \"string\"\n"
+        "  },\n"
+        "  \"special_features\": [\"string\"],\n"
+        "  \"awards\": [\"string\"]\n"
+        "}\n"
+        "```\n\n"
+        "Prioritize: Official hotel website, Expedia, Booking.com, TripAdvisor.\n\n"
+        "Begin your search and provide the complete JSON response matching the exact schema structure above."
+    )
 
-**Hotel Name:** {hotel_name}
-**Location:** {location}
-
-Please search the web and compile the following information in a structured JSON format that matches a specific database schema. Prioritize official sources (hotel website, Expedia, Booking.com, TripAdvisor) over user-generated content.
-
-**REQUIRED INFORMATION:**
-
-1. **Hotel Main Information:**
-   - Official full name (max 255 characters)
-   - Star rating (integer between 1-5)
-   - Description: Write 2-3 cohesive paragraphs about the hotel's essence, design, atmosphere, and history. This should read like premium travel writing with NO bullet points or lists.
-   - Full street address (complete address as single text)
-   - Year opened (DATE format: YYYY-MM-DD, use January 1st if only year known)
-   - Last renovation date (DATE format: YYYY-MM-DD, use January 1st if only year known)
-   - Total number of rooms/suites (integer)
-   - Number of floors (integer)
-   - Additional Information: Write 2-3 cohesive paragraphs covering neighborhood context, target guests, dining details, and brand positioning. Write as flowing prose with NO bullet points or lists.
-
-2. **Room Types:**
-   For each room type, provide:
-   - Room type name (max 100 characters)
-   - Bed configuration (max 100 characters, e.g., "1 King", "2 Queens")
-   - Room size in square feet (integer only, no units)
-   - Maximum occupancy (integer)
-   - Minimum price (decimal, e.g., 189.00)
-   - Maximum price (decimal, e.g., 279.00)
-   - Room description (text, can include special features)
-
-3. **Amenities:**
-   Organize amenities by category. For each amenity:
-   - Category (max 50 characters, e.g., "Room Amenities", "Property Amenities", "Fitness", "Business", "Dining")
-   - Description (text summary of amenities in this category)
-   - Details (JSON object with specific key-value pairs for this category)
-
-   **Categories to include:**
-   - Room Amenities (WiFi, TV, coffee maker, mini-fridge, microwave, safe, iron, hair dryer, toiletries, AC, heating, workspace)
-   - Property Amenities (pool, fitness center, spa, business center, meeting space, parking, EV charging, accessibility)
-   - Dining (restaurants and bars with their details)
-   - Services (front desk, shuttle, concierge, laundry, etc.)
-
-4. **Policies:**
-   - Check-in time (TIME format: HH:MM:SS, e.g., "15:00:00")
-   - Check-out time (TIME format: HH:MM:SS, e.g., "11:00:00")
-   - Minimum age requirement (integer)
-   - Pet policy (text description)
-   - Smoking policy (text description)
-   - Children policy (text description)
-   - Extra person policy (text description including fees)
-   - Cancellation policy (text description)
-
-5. **Special Features & Awards:**
-   - List of special features/programs
-   - List of awards and certifications
-
-**FORMAT REQUIREMENTS:**
-
-Return the information as a valid JSON object following this EXACT structure:
-```json
-{{
-  "hotel": {{
-    "official_name": "Full official hotel name",
-    "star_rating": 4,
-    "description": "2-3 flowing paragraphs about hotel essence, design, atmosphere, and history. NO bullet points.",
-    "address": "Complete street address",
-    "year_opened": "2015-01-01",
-    "last_renovation": "2021-01-01",
-    "total_rooms": 261,
-    "number_of_floors": 5,
-    "additional_info": "2-3 flowing paragraphs covering neighborhood, target guests, dining venues, and brand positioning. NO bullet points."
-  }},
-  "rooms": [
-    {{
-      "room_type": "Room, 1 King Bed",
-      "bed_configuration": "1 King",
-      "room_size_sqft": 280,
-      "max_occupancy": 2,
-      "price_range_min": 189.00,
-      "price_range_max": 279.00,
-      "description": "Renovated room with blackout curtains, sofa bed, refrigerator, connecting rooms available"
-    }}
-  ],
-  "amenities": [
-    {{
-      "category": "Room Amenities",
-      "description": "All rooms include modern conveniences for comfort and productivity",
-      "details": {{
-        "wifi": "Free high-speed",
-        "tv": "43-inch flat-screen with premium channels",
-        "coffee_maker": "Keurig",
-        "mini_fridge": true,
-        "microwave": true,
-        "safe": "At front desk",
-        "iron_ironing_board": true,
-        "hair_dryer": true,
-        "toiletries_brand": "Standard Hilton",
-        "air_conditioning": true,
-        "heating": true,
-        "workspace_desk": "Ergonomic desk with chair"
-      }}
-    }},
-    {{
-      "category": "Property Amenities",
-      "description": "Hotel features for guests during their stay",
-      "details": {{
-        "pool": "Indoor heated pool",
-        "fitness_center": "24-hour with cardio and weights",
-        "spa": null,
-        "business_center": "24-hour with computers and printer",
-        "meeting_space": "3 rooms totaling 2099 sq ft",
-        "parking": "Self parking $20/day with EV charging",
-        "accessibility": "Mobility and hearing accessible rooms and public areas"
-      }}
-    }},
-    {{
-      "category": "Dining",
-      "description": "On-site dining options",
-      "details": {{
-        "restaurants": [
-          {{
-            "name": "Garden Grille & Bar",
-            "cuisine": "American",
-            "meal_service": "Breakfast 6-10am Mon-Fri, 7-11am Sat-Sun; Dinner 5-10pm",
-            "price_range": "$$",
-            "special_features": "Casual dining with kid menu and bar service"
-          }}
-        ]
-      }}
-    }},
-    {{
-      "category": "Services",
-      "description": "Guest services available",
-      "details": {{
-        "front_desk": "24-hour",
-        "multilingual_staff": true,
-        "airport_shuttle": "Free 24-hour shuttle",
-        "baggage_storage": true,
-        "concierge": true,
-        "laundry": "Self-service and dry cleaning available",
-        "express_checkin_checkout": true
-      }}
-    }}
-  ],
-  "policies": {{
-    "check_in_time": "15:00:00",
-    "check_out_time": "11:00:00",
-    "min_age_requirement": 21,
-    "pet_policy": "Dogs and cats allowed, maximum 2 pets, $75 fee per stay, service animals free",
-    "smoking_policy": "Non-smoking property",
-    "children_policy": "Children welcome, cribs and infant beds available free on request",
-    "extra_person_policy": "$10 per stay for rollaway bed",
-    "cancellation_policy": "Free cancellation up to 24 hours before arrival on standard rates; otherwise one night fee charged"
-  }},
-  "special_features": [
-    "Hilton Honors rewards program",
-    "EV charging stations",
-    "Family, romance, and park & fly packages",
-    "COVID-19 safety measures with enhanced cleaning",
-    "Wedding and meeting/event services"
-  ],
-  "awards": [
-    "TripAdvisor Travelers' Choice",
-    "Consistently rated 9.2+ on Expedia"
-  ]
-}}
-```
-
-**CRITICAL DATA TYPE REQUIREMENTS:**
-
-1. **Integers:** star_rating, room_size_sqft, max_occupancy, total_rooms, number_of_floors, min_age_requirement
-2. **Decimals:** price_range_min, price_range_max (use format XX.XX)
-3. **Dates:** year_opened, last_renovation (format: YYYY-MM-DD, if only year known use January 1st)
-4. **Time:** check_in_time, check_out_time (format: HH:MM:SS in 24-hour format)
-5. **Text:** description, additional_info, address, policy descriptions
-6. **Varchar limits:** official_name (255), room_type (100), bed_configuration (100), category (50)
-7. **Boolean in JSON:** Use true/false (lowercase)
-8. **Null values:** Use null (lowercase) for missing data, not "not_available" or empty strings
-
-**IMPORTANT GUIDELINES:**
-
-1. **Description Field (about section):**
-   - Must be 2-3 flowing paragraphs
-   - Focus ONLY on: property essence, design/atmosphere, history/credentials
-   - NO bullet points, NO lists
-   - Write in engaging, professional tone
-
-2. **Additional_info Field:**
-   - Must be 2-3 flowing paragraphs
-   - Cover: neighborhood/nearby attractions, target guests/experience, dining details, brand positioning
-   - NO bullet points, NO lists
-   - Write as connected prose
-
-3. **Room Size:**
-   - Must be integer only (no "sq ft" or "approx")
-   - Extract numeric value only (e.g., "280 sq ft" becomes 280)
-
-4. **Prices:**
-   - Must be decimal format (189.00, not "$189" or "189-279")
-   - Separate min and max clearly
-
-5. **Dates:**
-   - Always use YYYY-MM-DD format
-   - If only year available, use January 1st (e.g., "2015" becomes "2015-01-01")
-
-6. **Times:**
-   - Always use HH:MM:SS format in 24-hour time
-   - "3:00 PM" becomes "15:00:00"
-   - "11:00 AM" becomes "11:00:00"
-
-7. **Amenities Structure:**
-   - Group related amenities into categories
-   - Each category should have: category name, description, and details JSON object
-   - Use consistent category names
-
-8. **Source Prioritization:**
-   - Hotel's official website
-   - Major booking platforms (Expedia, Booking.com, Hotels.com)
-   - Travel guides
-
-9. **Data Validation:**
-   - Verify data types match requirements
-   - Use null for missing data, not empty strings or "Not Avaliable"
-   - Ensure all varchar fields don't exceed character limits
-   - Cross-reference information from multiple sources
-
-Begin your search and provide the complete JSON response matching the exact schema structure above."""
+    prompt = header + schema_block
 
     payload = {
         "model": "sonar-pro",
@@ -508,37 +367,60 @@ Begin your search and provide the complete JSON response matching the exact sche
         
         result = response.json()
         content = result['choices'][0]['message']['content']
+
+        print(content)
         
-        # Extract JSON from markdown code blocks
-        if '```json' in content:
-            json_start = content.find('```json') + 7
-            json_end = content.find('```', json_start)
-            if json_end == -1:
-                logger.error(f"No closing ``` found for JSON block in hotel: {hotel_name}")
-                return None
-            content = content[json_start:json_end].strip()
-        elif '```' in content:
-            json_start = content.find('```') + 3
-            json_end = content.find('```', json_start)
-            if json_end == -1:
-                logger.error(f"No closing ``` found for code block in hotel: {hotel_name}")
-                return None
-            content = content[json_start:json_end].strip()
+        # Extract JSON from markdown code blocks (support multiple blocks)
+        if '```' in content:
+            try:
+                blocks = re.findall(r"```(?:json)?\s*([\s\S]*?)```", content, flags=re.IGNORECASE)
+            except Exception:
+                blocks = []
+            if blocks:
+                
+                blocks_sorted = sorted(blocks, key=lambda b: len(b or ''), reverse=True)
+                content = (blocks_sorted[0] or '').strip()
+            else:
+               
+                if '{' in content and '}' in content:
+                    first_brace = content.find('{')
+                    last_brace = content.rfind('}')
+                    if last_brace > first_brace:
+                        content = content[first_brace:last_brace + 1]
+        else:
+   
+            if '{' in content and '}' in content:
+                first_brace = content.find('{')
+                last_brace = content.rfind('}')
+                if last_brace > first_brace:
+                    content = content[first_brace:last_brace + 1]
         
         # Log the extracted content for debugging
         logger.debug(f"Extracted content for {hotel_name}: {content[:200]}...")
         
+        # Handle explicit non-JSON responses
+        if content.strip().lower().startswith("hotel doesn't exist"):
+            return {
+                'hotel': None,
+                'rooms': None,
+                'amenities': None,
+                'policies': None,
+                'special_features': None,
+                'awards': None,
+                'error': "Hotel doesn't exist"
+            }
+
         # Validate JSON before parsing
         if not content.strip():
             logger.error(f"Empty content extracted for hotel: {hotel_name}")
             return None
             
-        # Try to parse JSON with better error handling
         hotel_data = validate_and_fix_json(content)
         if hotel_data:
             logger.info(f"Successfully retrieved data for hotel: {hotel_name}")
             return hotel_data
         else:
+            print(content)
             logger.error(f"Failed to parse JSON for hotel: {hotel_name}")
             return None
         
@@ -549,12 +431,21 @@ Begin your search and provide the complete JSON response matching the exact sche
 
 def extract_hotel_data_from_row(df_row: pd.Series) -> Dict:
     hotel_name = df_row.get('name', '')
-    location = df_row.get('address_locality', '')
+    street = df_row.get('address_street-address', '')
+    city = df_row.get('address_locality', '')
+    state = df_row.get('address_region', '')
+    postal_code = df_row.get('address_postal-code', '')
     if not hotel_name:
         raise ValueError("Hotel name not found in DataFrame row")
-    if not location:
+   
+    parts = [str(p).strip() for p in [street, city, state] if p and str(p).strip()]
+    # Attach postal code with a space before it if present
+    full_address = ", ".join(parts)
+    if postal_code and str(postal_code).strip():
+        full_address = f"{full_address} {str(postal_code).strip()}" if full_address else str(postal_code).strip()
+    if not full_address:
         raise ValueError("Location not found in DataFrame row")
-    return extract_hotel_data(hotel_name, location)
+    return extract_hotel_data(hotel_name, full_address)
 
 
 def merge_hotel_data(df_row: pd.Series, hotel_data_json: Dict) -> Dict[str, pd.DataFrame]:

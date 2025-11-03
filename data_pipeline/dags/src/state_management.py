@@ -1,34 +1,29 @@
-import os
 import json
 import logging
-from pathlib import Path
 from datetime import datetime
-
 import pandas as pd
 
 from src.bucket_util import download_file_from_gcs, upload_file_to_gcs
-from src.path import _resolve_project_path,_ensure_output_dir
+from src.path import (
+    get_processed_batch_file_path,
+    get_processed_state_path,
+    get_gcs_processed_state_path
+)
+
 logger = logging.getLogger(__name__)
 
 
-
-def update_processing_state(
-    city: str = 'Boston'
-) -> str:
+def update_processing_state(city: str = 'Boston') -> str:
     logger.info(f"Updating processing state for {city}")
     
     try:
-        city_lower = city.lower().replace(' ', '_')
-        
-        # Load current batch
-        batch_path = _resolve_project_path(f'data/processed/{city_lower}/batch_hotels.csv')
+        batch_path = get_processed_batch_file_path(city, 'hotels')
         batch = pd.read_csv(batch_path)
         hotel_ids = batch['hotel_id'].tolist()
         
-        # Load existing state
-        state_path = _resolve_project_path(f'data/processed/{city_lower}/state.json')
+        state_path = get_processed_state_path(city)
         try:
-            download_file_from_gcs(f"processed/{city_lower}/state.json", state_path)
+            download_file_from_gcs(get_gcs_processed_state_path(city), state_path)
             with open(state_path, 'r') as f:
                 state = json.load(f)
         except Exception:
@@ -38,8 +33,6 @@ def update_processing_state(
                 "total_processed": 0,
                 "batches": []
             }
-        
-        # Update state with newly processed hotels
         state['processed_hotel_ids'].extend(hotel_ids)
         state['total_processed'] = len(state['processed_hotel_ids'])
         state['last_updated'] = datetime.now().isoformat()
@@ -51,11 +44,10 @@ def update_processing_state(
             "status": "completed"
         })
         
-        _ensure_output_dir(os.path.dirname(state_path))
         with open(state_path, 'w') as f:
             json.dump(state, f, indent=2)
         
-        upload_file_to_gcs(state_path, f"processed/{city_lower}/state.json")
+        upload_file_to_gcs(state_path, get_gcs_processed_state_path(city))
         
         logger.info(f"State updated! Total processed: {state['total_processed']} hotels")
         logger.info(f"Completed batch {len(state['batches'])}")

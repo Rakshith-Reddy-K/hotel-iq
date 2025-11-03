@@ -140,7 +140,7 @@ async def get_hotel_data_async(hotel_name: str, location: str) -> dict:
             # Extract JSON from markdown code blocks (similar to Perplexity handling)
             if '```' in cleaned_text:
                 try:
-                    # Try to find all code blocks, including language markers
+                 
                     # Match pattern: ```json or ``` followed by content and closing ```
                     pattern = r"```(json)?\s*([\s\S]*?)```"
                     matches = re.findall(pattern, cleaned_text, flags=re.IGNORECASE)
@@ -163,8 +163,8 @@ async def get_hotel_data_async(hotel_name: str, location: str) -> dict:
                     # If regex fails, continue to fallback
                     pass
             
-            # Always try to extract JSON object between first { and last }
-            # This handles cases where there are no closing backticks or incomplete code blocks
+            # extract JSON object between first { and last }
+            # handles cases where there are no closing backticks or incomplete code blocks
             if '{' in cleaned_text and '}' in cleaned_text:
                 first_brace = cleaned_text.find('{')
                 last_brace = cleaned_text.rfind('}')
@@ -186,17 +186,16 @@ async def get_hotel_data_async(hotel_name: str, location: str) -> dict:
                 cleaned_text = cleaned_text[:-3]
             cleaned_text = cleaned_text.strip()
             
-            # Final validation: ensure we have a JSON object
+            # ensure we have a JSON object
             if not cleaned_text.startswith('{'):
                 raise ValueError("Extracted text does not start with '{' - invalid JSON format")
 
-            # Try to parse JSON, and if it fails, try to fix common issues
-            # First try direct parsing
+            # Try to parse JSON
             try:
                 return json.loads(cleaned_text)
             except json.JSONDecodeError as json_err:
                 # Try using the validation/fix function from utils first
-                # This handles trailing commas, unquoted keys, and other issues
+                #  handles trailing commas, unquoted keys, and other issues
                 try:
                     from src.utils import validate_and_fix_json
                     fixed_json = validate_and_fix_json(cleaned_text)
@@ -205,21 +204,14 @@ async def get_hotel_data_async(hotel_name: str, location: str) -> dict:
                 except Exception as fix_err:
                     pass
                 
-                # If that didn't work, try fixing unescaped quotes in string values
-                # This is a common issue where Gemini returns quotes like "Seaport Saves" unescaped
                 try:
                     # Pattern: find unescaped quotes inside string values
                     # Look for pattern: "text "word" more text" where we need to escape the inner quotes
                     # This regex finds quotes that are inside a string value (between :" and ", or "})
-                    # It's conservative and only fixes quotes that are clearly inside values
-                    
                     fixed_text = cleaned_text
                     # Escape quotes that appear after :" and before ", or before ",
-                    # but skip if they're already escaped
                     pattern = r'(:\s*")((?:(?:[^"\\]|\\.)*?"\s*[,\]}])*?)([^"\\]|(?<!\\))"([^",\]}])'
                     
-                    # Simpler approach: find and escape quotes inside string values
-                    # Match quotes that are inside a string (after ": and before closing quote)
                     def escape_quotes_in_strings(text):
                         """Escape unescaped quotes inside JSON string values"""
                         result = []
@@ -311,13 +303,4 @@ def get_hotel_data(hotel_name: str, location: str) -> dict:
                 # No event loop at all, create a new one
                 return asyncio.run(get_hotel_data_async(hotel_name, location))
     except Exception as e:
-        # Fallback: always use asyncio.run which creates its own event loop
         return asyncio.run(get_hotel_data_async(hotel_name, location))
-
-
-if __name__ == "__main__":
-    target_hotel_name = "Seaport Boston Hotel"
-    target_location = "1 Seaport Lane,Boston,MA,2210,USA"
-    print(f"Researching '{target_hotel_name}'...")
-    hotel_data = get_hotel_data(target_hotel_name, target_location)
-    print(json.dumps(hotel_data, indent=2))

@@ -9,5 +9,5 @@ INSTANCE="hotel-iq"
 CREDENTIALS_FILE="$HOME/.gcp/hoteliq-key.json"
 
 # Run proxy
-./cloud-sql-proxy ${PROJECT}:${REGION}:${INSTANCE} \
+cloud-sql-proxy ${PROJECT}:${REGION}:${INSTANCE} \
     --credentials-file=${CREDENTIALS_FILE}

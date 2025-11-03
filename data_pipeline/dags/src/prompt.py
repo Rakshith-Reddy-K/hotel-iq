@@ -14,7 +14,34 @@ import requests
 
 logger = logging.getLogger(__name__)
 
-def extract_hotel_data(hotel_name: str, location: str, api_key: Optional[str] = None) -> Optional[Dict]:
+def extract_hotel_data_gemini(hotel_name: str, location: str, api_key: Optional[str] = None) -> Optional[Dict]:
+    """
+    Extract comprehensive hotel data using Gemini API (default).
+    Uses utils_gemini.get_hotel_data directly.
+    
+    Args:
+        hotel_name (str): Name of the hotel
+        location (str): Location of the hotel (e.g., "Boston, MA 02110")
+        api_key (ignored): Kept for backward compatibility; Gemini uses env var GEMINI_API_KEY.
+        
+    Returns:
+        dict: JSON response containing detailed hotel information, or None on error
+    """
+    from src.utils_gemini import get_hotel_data
+    return get_hotel_data(hotel_name, location)
+
+def extract_hotel_data_perplexity(hotel_name: str, location: str, api_key: Optional[str] = None) -> Optional[Dict]:
+    """
+    Extract comprehensive hotel data using Perplexity API (legacy).
+    
+    Args:
+        hotel_name (str): Name of the hotel
+        location (str): Location of the hotel (e.g., "Los Angeles")
+        api_key (str, optional): Perplexity API key. If not provided, will look for PERPLEXITY_API_KEY env variable.
+        
+    Returns:
+        dict: JSON response containing detailed hotel information
+    """
     logger.info(f"Starting Perplexity API call for hotel: {hotel_name} in {location}")
     
     if api_key is None:
@@ -132,35 +159,29 @@ def extract_hotel_data(hotel_name: str, location: str, api_key: Optional[str] = 
 
         print(content)
         
-        # Extract JSON from markdown code blocks (support multiple blocks)
         if '```' in content:
             try:
                 blocks = re.findall(r"```(?:json)?\s*([\s\S]*?)```", content, flags=re.IGNORECASE)
             except Exception:
                 blocks = []
             if blocks:
-                
                 blocks_sorted = sorted(blocks, key=lambda b: len(b or ''), reverse=True)
                 content = (blocks_sorted[0] or '').strip()
             else:
-               
                 if '{' in content and '}' in content:
                     first_brace = content.find('{')
                     last_brace = content.rfind('}')
                     if last_brace > first_brace:
                         content = content[first_brace:last_brace + 1]
         else:
-   
             if '{' in content and '}' in content:
                 first_brace = content.find('{')
                 last_brace = content.rfind('}')
                 if last_brace > first_brace:
                     content = content[first_brace:last_brace + 1]
         
-        # Log the extracted content for debugging
         logger.debug(f"Extracted content for {hotel_name}: {content[:200]}...")
         
-        # Handle explicit non-JSON responses
         if content.strip().lower().startswith("hotel doesn't exist"):
             return {
                 'hotel': None,
@@ -172,7 +193,6 @@ def extract_hotel_data(hotel_name: str, location: str, api_key: Optional[str] = 
                 'error': "Hotel doesn't exist"
             }
 
-        # Validate JSON before parsing
         if not content.strip():
             logger.error(f"Empty content extracted for hotel: {hotel_name}")
             return None
@@ -233,7 +253,10 @@ def validate_and_fix_json(json_string: str) -> Optional[Dict]:
             logger.error(f"Fixed content: {fixed_json[:500]}")
             return None
 
-def extract_hotel_data_from_row(df_row: pd.Series) -> Dict:
+def extract_hotel_data_from_row_gemini(df_row: pd.Series) -> Dict:
+    """
+    Extract hotel data from a DataFrame row using Gemini API (default).
+    """
     hotel_name = df_row.get('name', '')
     street = df_row.get('address_street-address', '')
     city = df_row.get('address_locality', '')
@@ -249,9 +272,33 @@ def extract_hotel_data_from_row(df_row: pd.Series) -> Dict:
         full_address = f"{full_address} {str(postal_code).strip()}" if full_address else str(postal_code).strip()
     if not full_address:
         raise ValueError("Location not found in DataFrame row")
-    return extract_hotel_data(hotel_name, full_address)
+    return extract_hotel_data_gemini(hotel_name, full_address)
+
+def extract_hotel_data_from_row_perplexity(df_row: pd.Series) -> Dict:
+    """
+    Extract hotel data from a DataFrame row using Perplexity API (legacy).
+    """
+    hotel_name = df_row.get('name', '')
+    street = df_row.get('address_street-address', '')
+    city = df_row.get('address_locality', '')
+    state = df_row.get('address_region', '')
+    postal_code = df_row.get('address_postal-code', '')
+    if not hotel_name:
+        raise ValueError("Hotel name not found in DataFrame row")
+   
+    parts = [str(p).strip() for p in [street, city, state] if p and str(p).strip()]
+    # Attach postal code with a space before it if present
+    full_address = ", ".join(parts)
+    if postal_code and str(postal_code).strip():
+        full_address = f"{full_address} {str(postal_code).strip()}" if full_address else str(postal_code).strip()
+    if not full_address:
+        raise ValueError("Location not found in DataFrame row")
+    return extract_hotel_data_perplexity(hotel_name, full_address)
 
 def enrich_hotels_perplexity(city: str = 'Boston', delay_seconds: float = 12, max_hotels: int = None):
+    """
+    Enrich hotels using Perplexity API (legacy).
+    """
     hotels_csv = get_batch_hotels_path(city)
     if not os.path.exists(hotels_csv):
         raise FileNotFoundError(f"Expected hotels CSV not found: {hotels_csv}")
@@ -265,7 +312,7 @@ def enrich_hotels_perplexity(city: str = 'Boston', delay_seconds: float = 12, ma
     with open(enrichment_path, 'w', encoding='utf-8') as f:
         for _, row in df.iterrows():
             try:
-                data = extract_hotel_data_from_row(row)
+                data = extract_hotel_data_from_row_perplexity(row)
                 record = {
                     'hotel_id': row.get('id'),
                     'name': row.get('name'),
@@ -289,6 +336,9 @@ def enrich_hotels_gemini(
     delay_seconds: float = 12,
     max_hotels: int = None
 ):
+    """
+    Enrich hotels using Gemini API (default).
+    """
     hotels_csv = get_batch_hotels_path(city)
     if not os.path.exists(hotels_csv):
         raise FileNotFoundError(f"Expected hotels CSV not found: {hotels_csv}")
@@ -302,7 +352,7 @@ def enrich_hotels_gemini(
     with open(enrichment_path, 'w', encoding='utf-8') as f:
         for _, row in df.iterrows():
             try:
-                data = extract_hotel_data_from_row(row)
+                data = extract_hotel_data_from_row_gemini(row)
                 record = {
                     'hotel_id': row.get('id'),
                     'name': row.get('name'),

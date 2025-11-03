@@ -69,6 +69,7 @@ x-airflow-common: &airflow-common
     PYTHONPATH: /opt/airflow:/opt/airflow/sql
     # Hotel Data Pipeline Configuration
     PERPLEXITY_API_KEY: ${PERPLEXITY_API_KEY:-}
+    GEMINI_API_KEY: ${GEMINI_API_KEY:-}
     CLOUD_DB_HOST: ${CLOUD_DB_HOST}
     CLOUD_DB_PORT: ${CLOUD_DB_PORT}
     CLOUD_DB_NAME: ${CLOUD_DB_NAME}

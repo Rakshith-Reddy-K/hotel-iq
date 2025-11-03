@@ -15,7 +15,7 @@ from src.filtering import check_if_filtering_needed,filter_all_city_hotels,filte
 from src.batch_selection import select_next_batch,filter_reviews_for_batch
 from src.accumulated import append_batch_to_accumulated
 from src.state_management import update_processing_state
-from src.prompt import enrich_hotels_perplexity,enrich_hotels_gemini
+from src.prompt import enrich_hotels_gemini
 
 #Configs
 CITY = 'Boston'
@@ -121,7 +121,7 @@ compute_ratings_task = PythonOperator(
     dag=dag,
 )
 
-# Enrich hotel data with metadata from Perplexity API
+# Enrich hotel data with metadata from Gemini API
 enrich_hotels_task = PythonOperator(
     task_id='get_hotel_enrichment_data',
     python_callable=enrich_hotels_gemini,

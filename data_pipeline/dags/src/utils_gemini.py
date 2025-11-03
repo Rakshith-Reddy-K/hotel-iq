@@ -99,36 +99,21 @@ async def get_hotel_data_async(hotel_name: str, location: str) -> dict:
         
         prompt = create_prompt(hotel_name, location)
         
-        # Using Google Search for grounding
         tools = [{'google_search': {}}]
         config = {"response_modalities": ["TEXT"], "tools": tools}
 
         async with client.aio.live.connect(model=model, config=config) as session:
             await session.send_client_content(turns={"parts": [{"text": prompt}]})
             
-            # Collect all response chunks
             full_response = ""
             async for chunk in session.receive():
                 if chunk.server_content:
                     if chunk.text is not None:
                         full_response += chunk.text
                     
-                    # Handle executable code if generated (for search)
-                    model_turn = chunk.server_content.model_turn
-                    if model_turn:
-                        for part in model_turn.parts:
-                            if part.executable_code is not None:
-                                # Code execution happens automatically for search
-                                pass
-                            if part.code_execution_result is not None:
-                                # Search results are incorporated automatically
-                                pass
-                    
-                    # Check if turn is complete
                     if chunk.server_content.turn_complete:
                         break
 
-            # Clean the response to ensure it's valid JSON
             if not full_response:
                 return {"error": "No response received from API."}
                 
@@ -137,47 +122,35 @@ async def get_hotel_data_async(hotel_name: str, location: str) -> dict:
             if cleaned_text.startswith('```'):
                 cleaned_text = re.sub(r'^```(?:json)?\s*', '', cleaned_text, flags=re.IGNORECASE)
             
-            # Extract JSON from markdown code blocks (similar to Perplexity handling)
             if '```' in cleaned_text:
                 try:
-                 
-                    # Match pattern: ```json or ``` followed by content and closing ```
                     pattern = r"```(json)?\s*([\s\S]*?)```"
                     matches = re.findall(pattern, cleaned_text, flags=re.IGNORECASE)
                     
                     if matches:
-                        # Filter out empty blocks and prioritize JSON blocks
                         valid_blocks = []
                         for lang, content in matches:
                             content = content.strip()
-                            if content and len(content) > 10:  # Filter out empty or tiny blocks
-                                # Prioritize JSON blocks
+                            if content and len(content) > 10:
                                 priority = 2 if lang and lang.lower() == 'json' else 1
                                 valid_blocks.append((priority, len(content), content))
                         
                         if valid_blocks:
-                            # Sort by priority (JSON first), then by length
                             valid_blocks.sort(key=lambda x: (x[0], x[1]), reverse=True)
                             cleaned_text = valid_blocks[0][2].strip()
                 except Exception:
-                    # If regex fails, continue to fallback
                     pass
             
-            # extract JSON object between first { and last }
-            # handles cases where there are no closing backticks or incomplete code blocks
             if '{' in cleaned_text and '}' in cleaned_text:
                 first_brace = cleaned_text.find('{')
                 last_brace = cleaned_text.rfind('}')
                 if last_brace > first_brace:
-                    # Extract the JSON portion
                     potential_json = cleaned_text[first_brace:last_brace + 1]
-                    # Check if it starts with valid JSON structure
                     if potential_json.strip().startswith('{'):
                         cleaned_text = potential_json
             
             cleaned_text = cleaned_text.strip()
             
-            # Remove any remaining markdown fences if they weren't caught
             if cleaned_text.startswith('```json'):
                 cleaned_text = cleaned_text[7:]
             if cleaned_text.startswith('```'):
@@ -186,16 +159,12 @@ async def get_hotel_data_async(hotel_name: str, location: str) -> dict:
                 cleaned_text = cleaned_text[:-3]
             cleaned_text = cleaned_text.strip()
             
-            # ensure we have a JSON object
             if not cleaned_text.startswith('{'):
                 raise ValueError("Extracted text does not start with '{' - invalid JSON format")
 
-            # Try to parse JSON
             try:
                 return json.loads(cleaned_text)
             except json.JSONDecodeError as json_err:
-                # Try using the validation/fix function from utils first
-                #  handles trailing commas, unquoted keys, and other issues
                 try:
                     from src.utils import validate_and_fix_json
                     fixed_json = validate_and_fix_json(cleaned_text)
@@ -205,11 +174,7 @@ async def get_hotel_data_async(hotel_name: str, location: str) -> dict:
                     pass
                 
                 try:
-                    # Pattern: find unescaped quotes inside string values
-                    # Look for pattern: "text "word" more text" where we need to escape the inner quotes
-                    # This regex finds quotes that are inside a string value (between :" and ", or "})
                     fixed_text = cleaned_text
-                    # Escape quotes that appear after :" and before ", or before ",
                     pattern = r'(:\s*")((?:(?:[^"\\]|\\.)*?"\s*[,\]}])*?)([^"\\]|(?<!\\))"([^",\]}])'
                     
                     def escape_quotes_in_strings(text):
@@ -222,25 +187,20 @@ async def get_hotel_data_async(hotel_name: str, location: str) -> dict:
                         while i < len(text):
                             char = text[i]
                             
-                            # Check if we're entering a string value (after ":)
                             if i > 1 and text[i-2:i] == ':"':
                                 in_string = True
                                 after_colon = True
                                 result.append(char)
                             elif char == '"' and in_string and i > 0 and text[i-1] != '\\':
-                                # Check if this is a closing quote
                                 j = i + 1
                                 while j < len(text) and text[j] in ' \t\n':
                                     j += 1
                                 if j < len(text) and text[j] in ',}]':
-                                    # Valid closing quote
                                     in_string = False
                                     result.append(char)
                                 else:
-                                    # Unescaped quote inside string - escape it
                                     result.append('\\"')
                             elif char == '\\' and in_string:
-                                # Handle escape sequences
                                 result.append(char)
                                 if i + 1 < len(text):
                                     result.append(text[i + 1])
@@ -253,16 +213,14 @@ async def get_hotel_data_async(hotel_name: str, location: str) -> dict:
                     
                     fixed_text = escape_quotes_in_strings(cleaned_text)
                     
-                    # Try parsing the fixed text
                     try:
                         return json.loads(fixed_text)
                     except json.JSONDecodeError:
-                        pass  # Continue to raise original error
+                        pass
                         
                 except Exception:
-                    pass  # Continue to raise original error
+                    pass
                 
-                # If all fixes failed, raise the original error
                 raise json_err
 
     except json.JSONDecodeError as e:
@@ -271,7 +229,6 @@ async def get_hotel_data_async(hotel_name: str, location: str) -> dict:
         if 'full_response' in locals():
             print("Raw response:", full_response[:500] + "..." if len(full_response) > 500 else full_response)
         if 'cleaned_text' in locals():
-            # Show context around the error location
             error_pos = e.pos if hasattr(e, 'pos') else None
             if error_pos and error_pos < len(cleaned_text):
                 start = max(0, error_pos - 100)
@@ -294,13 +251,10 @@ def get_hotel_data(hotel_name: str, location: str) -> dict:
             try:
                 loop = asyncio.get_event_loop()
                 if loop.is_closed():
-                    # Loop is closed, create a new one
                     return asyncio.run(get_hotel_data_async(hotel_name, location))
                 else:
-                    # Use existing loop
                     return loop.run_until_complete(get_hotel_data_async(hotel_name, location))
             except RuntimeError:
-                # No event loop at all, create a new one
                 return asyncio.run(get_hotel_data_async(hotel_name, location))
     except Exception as e:
         return asyncio.run(get_hotel_data_async(hotel_name, location))

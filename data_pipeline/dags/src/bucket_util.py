@@ -2,6 +2,8 @@ import os
 from google.cloud import storage
 from dotenv import load_dotenv
 import logging
+from google.api_core import retry, exceptions
+import time
 
 logger = logging.getLogger(__name__)
 load_dotenv()
@@ -21,27 +23,36 @@ def get_bucket():
         raise ValueError("Bucket does not exist")
     return bucket
 
-def upload_file_to_gcs(file_path, blob_name):
-    logger.info(f"Starting GCS upload: {file_path} -> {blob_name}")
+def upload_file_to_gcs(file_path, blob_name, chunk_size=5*1024*1024, max_retries=3):
     if not os.path.exists(file_path):
-        logger.error(f"File not found: {file_path}")
         raise FileNotFoundError(f"File not found: {file_path}")
     
     file_size = os.path.getsize(file_path)
-    logger.info(f"Local file size: {file_size:,} bytes")
+    logger.info(f"Uploading {file_size:,} bytes to {blob_name}")
     
-    try:
-        bucket = get_bucket()
-        blob = bucket.blob(blob_name)
-        logger.info(f"Uploading to: gs://{bucket.name}/{blob_name}")
-        blob.upload_from_filename(file_path)
-        logger.info(f"Upload successful - Size: {blob.size:,} bytes")
-        logger.info(f"GCS path: gs://{bucket.name}/{blob.name}")
-        
-        return f"gs://{bucket.name}/{blob.name}"
-        
-    except Exception as e:
-        logger.error(f"Upload failed: {e}")
+    for attempt in range(max_retries):
+        try:
+            bucket = get_bucket()
+            blob = bucket.blob(blob_name)
+            
+            if file_size > 10 * 1024 * 1024:
+                blob.chunk_size = chunk_size
+            
+            blob.upload_from_filename(
+                file_path,
+                timeout=600,
+                retry=retry.Retry(deadline=600)
+            )
+            
+            logger.info(f"Upload successful: gs://{bucket.name}/{blob.name}")
+            return f"gs://{bucket.name}/{blob.name}"
+            
+        except Exception as e:
+            if attempt < max_retries - 1:
+                time.sleep(2 ** attempt)
+            else:
+                logger.error(f"Upload failed: {e}")
+                raise
 
 def download_file_from_gcs(blob_name, local_path):
     try:
@@ -60,7 +71,7 @@ def download_file_from_gcs(blob_name, local_path):
         return True 
     except Exception as e:
         logger.info(f"Download failed: {e}")
-        return False
+        raise e
 
 def list_blobs(prefix=None):
     bucket = get_bucket()

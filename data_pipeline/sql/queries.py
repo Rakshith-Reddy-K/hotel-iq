@@ -1,9 +1,10 @@
-import json
-from typing import Dict, List, Optional
+from typing import Dict, List
 from sql.db_pool import get_connection
+import pandas as pd
+import os
+from psycopg2.extras import execute_values
 
 def list_tables():
-    """Get connection from pool and list all tables"""
     with get_connection() as conn:
         with conn.cursor() as cursor:
             # Query to get all tables
@@ -27,7 +28,6 @@ def list_tables():
             return tables
 
 def create_hotels_table():
-    """Create the main hotels table"""
     with get_connection() as conn:
         with conn.cursor() as cursor:
             cursor.execute("""
@@ -65,7 +65,6 @@ def create_hotels_table():
             print("Hotels table created successfully")
 
 def create_rooms_table():
-    """Create the rooms table"""
     with get_connection() as conn:
         with conn.cursor() as cursor:
             cursor.execute("""
@@ -91,7 +90,6 @@ def create_rooms_table():
             print("Rooms table created successfully")
 
 def create_reviews_table():
-    """Create the reviews table"""
     with get_connection() as conn:
         with conn.cursor() as cursor:
             cursor.execute("""
@@ -121,7 +119,6 @@ def create_reviews_table():
             print(" Reviews table created successfully")
 
 def create_amenities_table():
-    """Create the amenities table"""
     with get_connection() as conn:
         with conn.cursor() as cursor:
             cursor.execute("""
@@ -164,7 +161,6 @@ def create_policies_table():
             print(" Policies table created successfully")
 
 def create_all_tables():
-    """Create all tables in the correct order"""
     try:
         print("Starting table creation...\n")
         
@@ -185,322 +181,156 @@ def create_all_tables():
         print(f"Error creating tables: {e}")
         raise
 
-# ============= DATABASE INSERTION =============
-
-def insert_into_hotel_table(transformed_hotel: Dict) -> Optional[int]:
-    """
-    Insert transformed hotel data into the database
-    
-    Args:
-        transformed_hotel: Dictionary with pre-transformed hotel data
-    
-    Returns:
-        hotel_id of inserted record or None if failed
-    """
-    with get_connection() as conn:
-        with conn.cursor() as cursor:
-            try:
-                # Prepare JSONB fields
-                special_features = transformed_hotel.get('special_features')
-                awards = transformed_hotel.get('awards')
-                images = transformed_hotel.get('images')
-                
+def insert_one_hotel_complete(hotel_data: Dict, rooms: List[Dict], amenities: List[Dict], 
+                               policies: List[Dict], reviews: List[Dict]):
+    try:
+        with get_connection() as conn:
+            with conn.cursor() as cursor:
+                # Insert hotel
                 cursor.execute("""
                     INSERT INTO hotels (
-                        hotel_id,
-                        official_name, star_rating, description, address,
-                        phone, email, website,
-                        overall_rating, total_reviews,
-                        cleanliness_rating, service_rating,
-                        location_rating, value_rating,
-                        year_opened, last_renovation,
-                        total_rooms, number_of_floors,
-                        special_features, awards, images,
-                        additional_info
-                    ) VALUES (
-                        %s,%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
-                    ) RETURNING hotel_id;
-                """, (
-                     transformed_hotel.get('hotel_id'),
-                    transformed_hotel.get('official_name'),
-                    transformed_hotel.get('star_rating'),
-                    transformed_hotel.get('description'),
-                    transformed_hotel.get('address'),
-                    transformed_hotel.get('phone'),
-                    transformed_hotel.get('email'),
-                    transformed_hotel.get('website'),
-                    transformed_hotel.get('overall_rating'),
-                    transformed_hotel.get('total_reviews'),
-                    transformed_hotel.get('cleanliness_rating'),
-                    transformed_hotel.get('service_rating'),
-                    transformed_hotel.get('location_rating'),
-                    transformed_hotel.get('value_rating'),
-                    transformed_hotel.get('year_opened'),
-                    transformed_hotel.get('last_renovation'),
-                    transformed_hotel.get('total_rooms'),
-                    transformed_hotel.get('number_of_floors'),
-                    json.dumps(special_features) if special_features else None,
-                    json.dumps(awards) if awards else None,
-                    json.dumps(images) if images else None,
-                    transformed_hotel.get('additional_info')
-                ))
+                        hotel_id, official_name, star_rating, description, address, city, state, 
+                        zip_code, country, phone, email, website, overall_rating, 
+                        total_reviews, cleanliness_rating, service_rating, location_rating, 
+                        value_rating, year_opened, last_renovation, total_rooms, 
+                        number_of_floors, images, additional_info
+                    )
+                    VALUES (
+                        %(hotel_id)s, %(official_name)s, %(star_rating)s, %(description)s, 
+                        %(address)s, %(city)s, %(state)s, %(zip_code)s, %(country)s, 
+                        %(phone)s, %(email)s, %(website)s, %(overall_rating)s, 
+                        %(total_reviews)s, %(cleanliness_rating)s, %(service_rating)s, 
+                        %(location_rating)s, %(value_rating)s, %(year_opened)s, 
+                        %(last_renovation)s, %(total_rooms)s, %(number_of_floors)s, 
+                        %(images)s, %(additional_info)s
+                    )
+                    ON CONFLICT (hotel_id) DO NOTHING
+                """, hotel_data)
                 
-                hotel_id = cursor.fetchone()[0]
-                conn.commit()
-                
-                print(f" Inserted hotel: {transformed_hotel.get('official_name')} (ID: {hotel_id})")
-                return hotel_id
-                
-            except Exception as e:
-                conn.rollback()
-                print(f" Error inserting hotel: {e}")
-                raise
-
-def insert_into_rooms_table(hotel_id: int, transformed_rooms: List[Dict]) -> int:
-    """
-    Insert transformed room data
-    
-    Returns:
-        Number of rooms inserted
-    """
-    inserted_count = 0
-    
-    with get_connection() as conn:
-        with conn.cursor() as cursor:
-            try:
-                for room in transformed_rooms:
-                    room['hotel_id'] = hotel_id
-                    
-                    # Prepare amenities as JSONB if present
-                    amenities = room.get('amenities')
-                    
-                    cursor.execute("""
+                # Batch insert rooms
+                if rooms:
+                    execute_values(cursor, """
                         INSERT INTO rooms (
-                            hotel_id, room_type, bed_configuration,
-                            room_size_sqft, max_occupancy,
-                            amenities,
-                            price_range_min, price_range_max,
-                            description
-                        ) VALUES (
-                            %s, %s, %s, %s, %s, %s, %s, %s, %s
-                        );
-                    """, (
-                        hotel_id,
-                        room.get('room_type'),
-                        room.get('bed_configuration'),
-                        room.get('room_size_sqft'),
-                        room.get('max_occupancy'),
-                        json.dumps(amenities) if amenities else None,
-                        room.get('price_range_min'),
-                        room.get('price_range_max'),
-                        room.get('description')
-                    ))
-                    inserted_count += 1
+                            hotel_id, room_type, bed_configuration, room_size_sqft, 
+                            max_occupancy, price_range_min, price_range_max, description
+                        ) VALUES %s
+                        ON CONFLICT (hotel_id, room_type) DO NOTHING
+                    """, [
+                        (r['hotel_id'], r['room_type'], r['bed_configuration'], 
+                         r['room_size_sqft'], r['max_occupancy'], r['price_range_min'], 
+                         r['price_range_max'], r['description'])
+                        for r in rooms
+                    ])
                 
-                conn.commit()
-                print(f" Inserted {inserted_count} rooms for hotel ID: {hotel_id}")
+                # Batch insert amenities
+                if amenities:
+                    execute_values(cursor, """
+                        INSERT INTO amenities (hotel_id, category, description, details)
+                        VALUES %s
+                        ON CONFLICT (hotel_id, category) DO NOTHING
+                    """, [
+                        (a['hotel_id'], a['category'], a['description'], a['details'])
+                        for a in amenities
+                    ])
                 
-            except Exception as e:
-                conn.rollback()
-                print(f" Error inserting rooms: {e}")
-                raise
-    
-    return inserted_count
-
-def insert_into_amenities_table(hotel_id: int, transformed_amenities: List[Dict]) -> int:
-    """
-    Insert transformed amenity data
-    
-    Returns:
-        Number of amenities inserted
-    """
-    inserted_count = 0
-    
-    with get_connection() as conn:
-        with conn.cursor() as cursor:
-            try:
-                for amenity in transformed_amenities:
-                    # Add hotel_id to amenity data
-                    amenity['hotel_id'] = hotel_id
-                    
-                    cursor.execute("""
-                        INSERT INTO amenities (
-                            hotel_id, category, description, details
-                        ) VALUES (
-                            %s, %s, %s, %s
-                        );
-                    """, (
-                        hotel_id,
-                        amenity.get('category'),
-                        amenity.get('description'),
-                        json.dumps(amenity.get('details')) if amenity.get('details') else None
-                    ))
-                    inserted_count += 1
+                # Batch insert policies
+                if policies:
+                    execute_values(cursor, """
+                        INSERT INTO policies (
+                            hotel_id, check_in_time, check_out_time, min_age_requirement,
+                            pet_policy, smoking_policy, children_policy, 
+                            extra_person_policy, cancellation_policy
+                        ) VALUES %s
+                        ON CONFLICT (hotel_id) DO NOTHING
+                    """, [
+                        (p['hotel_id'], p['check_in_time'], p['check_out_time'], 
+                         p['min_age_requirement'], p['pet_policy'], p['smoking_policy'], 
+                         p['children_policy'], p['extra_person_policy'], p['cancellation_policy'])
+                        for p in policies
+                    ])
                 
-                conn.commit()
-                print(f" Inserted {inserted_count} amenities for hotel ID: {hotel_id}")
-                
-            except Exception as e:
-                conn.rollback()
-                print(f" Error inserting amenities: {e}")
-                raise
-    
-    return inserted_count
-
-def insert_into_policies_table(hotel_id: int, transformed_policies: Dict) -> bool:
-    """
-    Insert transformed policy data
-    
-    Returns:
-        True if successful
-    """
-    with get_connection() as conn:
-        with conn.cursor() as cursor:
-            try:
-                # Add hotel_id to policies data
-                transformed_policies['hotel_id'] = hotel_id
-                
-                cursor.execute("""
-                    INSERT INTO policies (
-                        hotel_id, check_in_time, check_out_time,
-                        min_age_requirement, pet_policy,
-                        smoking_policy, children_policy,
-                        extra_person_policy, cancellation_policy
-                    ) VALUES (
-                        %s, %s, %s, %s, %s, %s, %s, %s, %s
-                    );
-                """, (
-                    hotel_id,
-                    transformed_policies.get('check_in_time'),
-                    transformed_policies.get('check_out_time'),
-                    transformed_policies.get('min_age_requirement'),
-                    transformed_policies.get('pet_policy'),
-                    transformed_policies.get('smoking_policy'),
-                    transformed_policies.get('children_policy'),
-                    transformed_policies.get('extra_person_policy'),
-                    transformed_policies.get('cancellation_policy')
-                ))
-                
-                conn.commit()
-                print(f" Inserted policies for hotel ID: {hotel_id}")
-                return True
-                
-            except Exception as e:
-                conn.rollback()
-                print(f" Error inserting policies: {e}")
-                raise
-
-def insert_into_reviews_table(hotel_id: int, transformed_reviews: List[Dict]) -> int:
-    """
-    Insert transformed review data
-    
-    Returns:
-        Number of reviews inserted
-    """
-    if not transformed_reviews:
-        return 0
-    
-    inserted_count = 0
-    
-    with get_connection() as conn:
-        with conn.cursor() as cursor:
-            try:
-                for review in transformed_reviews:
-                    # Add hotel_id to review data
-                    review['hotel_id'] = hotel_id
-                    
-                    cursor.execute("""
+                # Batch insert reviews
+                if reviews:
+                    execute_values(cursor, """
                         INSERT INTO reviews (
-                            hotel_id, overall_rating, title,
-                            review_text, reviewer_name,
+                            hotel_id, overall_rating, review_text, reviewer_name, 
                             review_date, source
-                        ) VALUES (
-                            %s, %s, %s, %s, %s, %s, %s
-                        );
-                    """, (
-                        hotel_id,
-                        review.get('overall_rating'),
-                        review.get('title'),
-                        review.get('review_text'),
-                        review.get('reviewer_name'),
-                        review.get('review_date'),
-                        review.get('source', 'tripadvisor')
-                    ))
-                    inserted_count += 1
-                
-                conn.commit()
-                if inserted_count > 0:
-                    print(f" Inserted {inserted_count} reviews for hotel ID: {hotel_id}")
-                
-            except Exception as e:
-                conn.rollback()
-                print(f" Error inserting reviews: {e}")
-                raise
-    
-    return inserted_count
-
-# def drop_all_tables():
-    """Drop all tables (use with caution!)"""
-    with get_connection() as conn:
-        with conn.cursor() as cursor:
-            # Drop in reverse dependency order
-            tables = ['policies', 'amenities', 'reviews', 'rooms', 'hotels']
-            
-            for table in tables:
-                cursor.execute(f"DROP TABLE IF EXISTS {table} CASCADE;")
-                print(f"Dropped table: {table}")
+                        ) VALUES %s
+                        ON CONFLICT (hotel_id, reviewer_name, review_date) DO NOTHING
+                    """, [
+                        (r['hotel_id'], r['overall_rating'], r['review_text'], 
+                         r['reviewer_name'], r['review_date'], r['source'])
+                        for r in reviews
+                    ])
             
             conn.commit()
-            print(" All tables dropped successfully")
+            print(f"Inserted hotel {hotel_data['hotel_id']} - {hotel_data['official_name']}")
+        
+    except Exception as e:
+        print(f"Failed hotel {hotel_data.get('hotel_id')}: {str(e)}")
+        raise
 
-# def get_table_info(table_name):
-    """Get detailed information about a specific table"""
-    with get_connection() as conn:
-        with conn.cursor() as cursor:
-            # Get column information
-            cursor.execute("""
-                SELECT 
-                    column_name,
-                    data_type,
-                    character_maximum_length,
-                    is_nullable,
-                    column_default
-                FROM information_schema.columns
-                WHERE table_name = %s
-                ORDER BY ordinal_position;
-            """, (table_name,))
-            
-            columns = cursor.fetchall()
-            
-            if columns:
-                print(f"\n📊 Structure of '{table_name}' table:")
-                print("-" * 80)
-                for col in columns:
-                    col_name, dtype, max_len, nullable, default = col
-                    type_info = dtype
-                    if max_len:
-                        type_info += f"({max_len})"
-                    nullable_info = "NULL" if nullable == 'YES' else "NOT NULL"
-                    default_info = f"DEFAULT {default}" if default else ""
-                    
-                    print(f"  {col_name:25} {type_info:20} {nullable_info:10} {default_info}")
-            else:
-                print(f"Table '{table_name}' not found")
-            
-            # Get indexes
-            cursor.execute("""
-                SELECT indexname, indexdef
-                FROM pg_indexes
-                WHERE tablename = %s;
-            """, (table_name,))
-            
-            indexes = cursor.fetchall()
-            if indexes:
-                print(f"\n🔍 Indexes on '{table_name}':")
-                for idx_name, idx_def in indexes:
-                    print(f"  - {idx_name}")
+def clean_dict_for_db(d: Dict) -> Dict:
+    """Convert NaN values to None in dictionary"""
+    cleaned = {}
+    for key, value in d.items():
+        if pd.isna(value):
+            cleaned[key] = None
+        elif isinstance(value, float) and (value != value):
+            cleaned[key] = None
+        else:
+            cleaned[key] = value
+    return cleaned
 
-# Example usage
-if __name__ == "__main__":
-    # Create all tables
-    create_all_tables()
+
+def bulk_insert_from_csvs(csv_dir: str = 'data/processed/boston'):
+    hotels_df = pd.read_csv(os.path.join(csv_dir, 'batch_hotels.csv'))
+    rooms_df = pd.read_csv(os.path.join(csv_dir, 'batch_rooms.csv'))
+    amenities_df = pd.read_csv(os.path.join(csv_dir, 'batch_amenities.csv'))
+    policies_df = pd.read_csv(os.path.join(csv_dir, 'batch_policies.csv'))
+    reviews_df = pd.read_csv(os.path.join(csv_dir, 'batch_reviews.csv'))
+    
+    rooms_by_hotel = rooms_df.groupby('hotel_id')
+    amenities_by_hotel = amenities_df.groupby('hotel_id')
+    policies_by_hotel = policies_df.groupby('hotel_id')
+    reviews_by_hotel = reviews_df.groupby('hotel_id')
+    
+    count = 0
+    errors = 0
+    
+    for _, hotel_row in hotels_df.iterrows():
+        hotel_id = hotel_row['hotel_id']
+        
+        try:
+            hotel_dict = clean_dict_for_db(hotel_row.to_dict())
+            hotel_rooms = []
+            if hotel_id in rooms_by_hotel.groups:
+                hotel_rooms = [clean_dict_for_db(r) for r in rooms_by_hotel.get_group(hotel_id).to_dict('records')]
+            hotel_amenities = []
+            if hotel_id in amenities_by_hotel.groups:
+                hotel_amenities = [clean_dict_for_db(a) for a in amenities_by_hotel.get_group(hotel_id).to_dict('records')]
+            hotel_policies = []
+            if hotel_id in policies_by_hotel.groups:
+                hotel_policies = [clean_dict_for_db(p) for p in policies_by_hotel.get_group(hotel_id).to_dict('records')]
+            hotel_reviews = []
+            if hotel_id in reviews_by_hotel.groups:
+                hotel_reviews = [clean_dict_for_db(r) for r in reviews_by_hotel.get_group(hotel_id).to_dict('records')]
+            insert_one_hotel_complete(
+                hotel_dict, 
+                hotel_rooms, 
+                hotel_amenities, 
+                hotel_policies, 
+                hotel_reviews
+            )
+            
+            count += 1
+            if count % 5 == 0:
+                print(f"Inserted {count}/{len(hotels_df)} hotels")
+                
+        except Exception as e:
+            errors += 1
+            print(f"Failed to insert hotel {hotel_id}: {str(e)}")
+            continue
+    
+    print(f"\nDone! Successfully inserted {count} hotels, {errors} errors")
+    return {'success': count, 'errors': errors}

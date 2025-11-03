@@ -3,7 +3,7 @@ import time
 import json
 import logging
 from pathlib import Path
-
+import shutil
 import pandas as pd
 
 from src.utils import get_reviews_for_hotels, calculate_all_hotel_ratings, extract_hotel_data_from_row, merge_hotel_data, export_hotel_data_to_csv
@@ -63,37 +63,34 @@ def extract_reviews_based_on_city(
 
 def compute_aggregate_ratings(
     city: str = 'Boston',
-    output_dir: str = 'output'
 ):
-    city_token = city.title().replace(' ', '')
     city_lower = city.lower().replace(' ', '_')
 
-    output_abspath = _resolve_project_path(output_dir)
+    output_abspath = _resolve_project_path(f'data/processing/{city_lower}')
     _ensure_output_dir(output_abspath)
 
-    city_reviews_path = os.path.join(output_abspath, f'{city_lower}_reviews.csv')
+    city_reviews_path = os.path.join(output_abspath, 'batch_reviews.csv')
     if os.path.exists(city_reviews_path):
         reviews_df = pd.read_csv(city_reviews_path)
     else:
-        reviews_df = pd.read_csv(os.path.join(output_abspath, 'reviews.csv'))
+        reviews_df = pd.read_csv(os.path.join(f'data/filtered/{city_lower}', 'reviews.csv'))
 
     agg_df = calculate_all_hotel_ratings(reviews_df)
-    out_path = os.path.join(output_abspath, f'hotel_ratings_{city_token}.csv')
+    out_path = os.path.join(output_abspath, 'batch_hotel_ratings.csv')
     agg_df.to_csv(out_path, index=False)
     return out_path
 
 
 def enrich_hotels_perplexity(
     city: str = 'Boston',
-    output_dir: str = 'output',
     delay_seconds: float = 12,
     max_hotels: int = None
 ):
-    city_token = city.title().replace(' ', '')
-    output_abspath = _resolve_project_path(output_dir)
+    city_lower = city.lower().replace(' ', '_')
+    output_abspath = _resolve_project_path(f'data/processing/{city_lower}')
     _ensure_output_dir(output_abspath)
 
-    hotels_csv = os.path.join(output_abspath, f'hotel_data_{city_token}.csv')
+    hotels_csv = os.path.join(output_abspath, 'batch_hotels.csv')
     if not os.path.exists(hotels_csv):
         raise FileNotFoundError(f"Expected hotels CSV not found: {hotels_csv}")
 
@@ -101,7 +98,7 @@ def enrich_hotels_perplexity(
     if max_hotels is not None:
         df = df.head(max_hotels)
 
-    enrichment_path = os.path.join(output_abspath, f'enrichment_{city_token}.jsonl')
+    enrichment_path = os.path.join(output_abspath, 'batch_enrichment.jsonl')
 
     with open(enrichment_path, 'w', encoding='utf-8') as f:
         for _, row in df.iterrows():
@@ -126,17 +123,18 @@ def enrich_hotels_perplexity(
     return enrichment_path
 
 
-def merge_sql_tables(
+def prepare_hotel_data_for_db(
     city: str = 'Boston',
-    output_dir: str = 'output'
 ):
-    city_token = city.title().replace(' ', '')
-    output_abspath = _resolve_project_path(output_dir)
+    city_lower = city.lower().replace(' ', '_')
+
+    output_abspath = _resolve_project_path(f'data/processing/{city_lower}')
     _ensure_output_dir(output_abspath)
 
-    hotels_csv = os.path.join(output_abspath, f'hotel_data_{city_token}.csv')
-    enrichment_path = os.path.join(output_abspath, f'enrichment_{city_token}.jsonl')
-    ratings_csv = os.path.join(output_abspath, f'hotel_ratings_{city_token}.csv')
+    hotels_csv = os.path.join(output_abspath, 'batch_hotels.csv')
+    enrichment_path = os.path.join(output_abspath, 'batch_enrichment.jsonl')
+    ratings_csv = os.path.join(output_abspath, 'batch_hotel_ratings.csv')
+    reviews_csv = os.path.join(output_abspath, 'batch_reviews.csv')
 
     if not os.path.exists(hotels_csv):
         raise FileNotFoundError(f"Expected hotels CSV not found: {hotels_csv}")
@@ -188,11 +186,13 @@ def merge_sql_tables(
     # Join rating aggregates if present
     if os.path.exists(ratings_csv) and not hotels_out.empty:
         ratings_df = pd.read_csv(ratings_csv)
-        # Drop rating columns from hotels_out to avoid duplicates, then merge
         rating_cols = ['overall_rating', 'total_reviews', 'cleanliness_rating', 'service_rating', 'location_rating', 'value_rating']
         hotels_out = hotels_out.drop(columns=[col for col in rating_cols if col in hotels_out.columns])
         hotels_out = hotels_out.merge(ratings_df, how='left', on='hotel_id')
 
+    
+    processed_folder = _resolve_project_path(f'data/processed/{city_lower}')
+    _ensure_output_dir(processed_folder)
     export_hotel_data_to_csv(
         {
             'hotels': hotels_out,
@@ -200,13 +200,21 @@ def merge_sql_tables(
             'amenities': amenities_out,
             'policies': policies_out,
         },
-        output_dir=output_abspath
+        output_dir=processed_folder
     )
+    if os.path.exists(enrichment_path):
+        enrichment_dest = os.path.join(processed_folder, 'batch_enrichment.jsonl')
+        shutil.copy(enrichment_path, enrichment_dest)
+
+    if os.path.exists(reviews_csv):
+            reviews_dest = os.path.join(processed_folder, 'batch_reviews.csv')
+            shutil.copy(reviews_csv, reviews_dest)
 
     return {
-        'hotels': os.path.join(output_abspath, 'hotels.csv'),
-        'rooms': os.path.join(output_abspath, 'rooms.csv'),
-        'amenities': os.path.join(output_abspath, 'amenities.csv'),
-        'policies': os.path.join(output_abspath, 'policies.csv')
+        'hotels': os.path.join(processed_folder, 'batch_hotels.csv'),
+        'rooms': os.path.join(processed_folder, 'batch_rooms.csv'),
+        'amenities': os.path.join(processed_folder, 'batch_amenities.csv'),
+        'policies': os.path.join(processed_folder, 'batch_policies.csv'),
+        'reviews': os.path.join(processed_folder, 'batch_reviews.csv'),
+        'enrichment': enrichment_dest
     }
-

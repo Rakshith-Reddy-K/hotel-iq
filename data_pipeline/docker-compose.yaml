@@ -69,7 +69,6 @@ x-airflow-common: &airflow-common
     PYTHONPATH: /opt/airflow:/opt/airflow/sql
     # Hotel Data Pipeline Configuration
     PERPLEXITY_API_KEY: ${PERPLEXITY_API_KEY:-}
-    LOCAL_CSV_PATH: "/opt/airflow/output"
     CLOUD_DB_HOST: ${CLOUD_DB_HOST}
     CLOUD_DB_PORT: ${CLOUD_DB_PORT}
     CLOUD_DB_NAME: ${CLOUD_DB_NAME}
@@ -93,7 +92,7 @@ x-airflow-common: &airflow-common
     - ${AIRFLOW_PROJ_DIR:-.}/logs:/opt/airflow/logs
     - ${AIRFLOW_PROJ_DIR:-.}/config:/opt/airflow/config
     - ${AIRFLOW_PROJ_DIR:-.}/plugins:/opt/airflow/plugins
-    - ${AIRFLOW_PROJ_DIR:-.}/Data:/opt/airflow/data
+    - ${AIRFLOW_PROJ_DIR:-.}/data:/opt/airflow/data
     - ${AIRFLOW_PROJ_DIR:-.}/output:/opt/airflow/output
     - ${AIRFLOW_PROJ_DIR:-.}/sql:/opt/airflow/sql
     - ${AIRFLOW_PROJ_DIR:-.}/extra:/opt/airflow/extra

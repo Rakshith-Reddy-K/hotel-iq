@@ -6,7 +6,7 @@ import json
 import pandas as pd
 from dotenv import load_dotenv
 
-from src.utils import parse_raw_hotels, parse_raw_reviews
+from src.utils import parse_raw_hotels
 from src.bucket_util import upload_file_to_gcs, download_file_from_gcs
 from src.path import _ensure_output_dir, _resolve_project_path
 

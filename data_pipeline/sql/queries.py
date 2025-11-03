@@ -4,8 +4,6 @@ import pandas as pd
 import os
 from psycopg2.extras import execute_values
 
-LOCAL_CSV_PATH = os.getenv("LOCAL_CSV_PATH", "data/processed")
-
 def list_tables():
     with get_connection() as conn:
         with conn.cursor() as cursor:

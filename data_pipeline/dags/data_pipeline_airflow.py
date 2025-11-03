@@ -3,14 +3,11 @@ from airflow.operators.python_operator import PythonOperator,BranchPythonOperato
 from airflow.operators.empty import EmptyOperator
 
 from datetime import datetime, timedelta
-import os
-import sys
 
 
 # Import our custom functions
 from src.transform import ( 
     compute_aggregate_ratings, 
-    enrich_hotels_perplexity,
     prepare_hotel_data_for_db
 )
 from sql.queries import create_all_tables,bulk_insert_from_csvs
@@ -18,10 +15,11 @@ from src.filtering import check_if_filtering_needed,filter_all_city_hotels,filte
 from src.batch_selection import select_next_batch,filter_reviews_for_batch
 from src.accumulated import append_batch_to_accumulated
 from src.state_management import update_processing_state
+from src.prompt import enrich_hotels_perplexity
 
 #Configs
 CITY = 'Boston'
-BATCH_SIZE = 50
+BATCH_SIZE = 25
 
 # Default arguments
 default_args = {
@@ -50,7 +48,7 @@ def check_filtering_branch(**context):
     if result == 'skip_filtering':
         return 'skip_filtering'
     else:
-        return 'filter_hotels'
+        return 'filter_all_city_hotels'
 
 # Check if filtering is needed or skip to batch selection
 check_filtering_task = BranchPythonOperator(
@@ -100,7 +98,7 @@ select_batch_task = PythonOperator(
     python_callable=select_next_batch,
     op_kwargs={
         'city': CITY,
-        'batch_size': 10
+        'batch_size': BATCH_SIZE
     },
     dag=dag,
 )

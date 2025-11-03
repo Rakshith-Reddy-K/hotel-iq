@@ -61,7 +61,6 @@ def create_hotels_table():
                 );
             """)
             
-            conn.commit()
             print("Hotels table created successfully")
 
 def create_rooms_table():
@@ -86,7 +85,6 @@ def create_rooms_table():
                 );
             """)
             
-            conn.commit()
             print("Rooms table created successfully")
 
 def create_reviews_table():
@@ -114,8 +112,7 @@ def create_reviews_table():
                     UNIQUE (hotel_id, reviewer_name, review_date)       
                 );
             """)
-            
-            conn.commit()
+                 
             print(" Reviews table created successfully")
 
 def create_amenities_table():
@@ -132,8 +129,7 @@ def create_amenities_table():
                    );
                     
             """)
-            
-            conn.commit()
+                    
             print(" Amenities table created successfully")
 
 def create_policies_table():
@@ -155,9 +151,7 @@ def create_policies_table():
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     CONSTRAINT policies_hotel_id_unique UNIQUE (hotel_id)
                 );
-            """)
-
-            conn.commit()
+            """)   
             print(" Policies table created successfully")
 
 def create_all_tables():
@@ -263,7 +257,6 @@ def insert_one_hotel_complete(hotel_data: Dict, rooms: List[Dict], amenities: Li
                         for r in reviews
                     ])
             
-            conn.commit()
             print(f"Inserted hotel {hotel_data['hotel_id']} - {hotel_data['official_name']}")
         
     except Exception as e:

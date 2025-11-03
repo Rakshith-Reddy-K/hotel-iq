@@ -284,3 +284,39 @@ def enrich_hotels_perplexity(city: str = 'Boston', delay_seconds: float = 12, ma
 
     return enrichment_path
 
+def enrich_hotels_gemini(
+    city: str = 'Boston',
+    delay_seconds: float = 12,
+    max_hotels: int = None
+):
+    hotels_csv = get_batch_hotels_path(city)
+    if not os.path.exists(hotels_csv):
+        raise FileNotFoundError(f"Expected hotels CSV not found: {hotels_csv}")
+
+    df = pd.read_csv(hotels_csv)
+    if max_hotels is not None:
+        df = df.head(max_hotels)
+
+    enrichment_path = get_batch_enrichment_path(city)
+
+    with open(enrichment_path, 'w', encoding='utf-8') as f:
+        for _, row in df.iterrows():
+            try:
+                data = extract_hotel_data_from_row(row)
+                record = {
+                    'hotel_id': row.get('id'),
+                    'name': row.get('name'),
+                    'city': row.get('address_locality'),
+                    'data': data
+                }
+                f.write(json.dumps(record, ensure_ascii=False) + "\n")
+            except Exception as e:
+                err_record = {
+                    'hotel_id': row.get('id'),
+                    'name': row.get('name'),
+                    'error': str(e)
+                }
+                f.write(json.dumps(err_record, ensure_ascii=False) + "\n")
+            time.sleep(delay_seconds)
+
+    return enrichment_path

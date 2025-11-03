@@ -32,13 +32,15 @@ python -m pip install -r requirements.txt
 
 3. Configure environment
 
-- Create a `.env` file in this folder (or set env vars in your shell). Typical variables used by the DB pool:
+- Create a `.env` file in this folder (or set env vars in your shell). Typical variables used by the DB/pipeline:
   - DB_HOST
   - DB_PORT
   - DB_NAME
   - DB_USER
   - DB_PASSWORD
 - The loader reads `LOCAL_CSV_PATH` from env (defaults to `intermediate/csv`).
+- For enrichment via Gemini, set:
+  - GEMINI_API_KEY
 
 4. (If using Cloud SQL) Start Cloud SQL Proxy
 
@@ -124,30 +126,43 @@ print(results)
 - dags/
 
   - data_pipeline_airflow.py
-    - Airflow DAG wiring extraction, transform, validation, and loader tasks.
+    - Airflow DAG wiring for filtering, batching, enrichment (Gemini), aggregation, export, and loading.
   - src/
-    - extract.py — functions to download and save raw hotel metadata and reviews (source files).
-    - transform.py — lightweight preprocessing helpers (e.g., review cleanup, city filtering).
-    - validation.py — simple data checks and assertions before load.
-    - bucket_util.py — optional helpers for reading/writing cloud storage buckets.
+    - transform.py — enrichment, aggregation, merge/export helpers (now Gemini-backed).
+    - filtering.py — filter all-city hotels/reviews and per-batch reviews.
+    - batch_selection.py — selects next batch of hotel IDs based on state; prepares batch files.
+    - accumulated.py — appends completed batch outputs to accumulated results in GCS.
+    - state_management.py — maintains `state.json` per city; tracks processed IDs and batches.
+    - utils.py — parsing, cleaning, enrichment merge utilities; delegates extraction to Gemini.
+    - utils_gemini.py — Gemini Live 2.5 Flash client and prompt formatting.
+    - bucket_util.py — helpers for reading/writing Google Cloud Storage.
 
-Transform helpers (example functions from transform module)
+Pipeline helpers (key functions)
 
-- extract_reviews_based_on_city(city, output_dir)
-
-  - Filters the main reviews CSV to keep only reviews for hotels listed in the city-specific hotel CSV. Writes a city-specific reviews CSV and returns its path.
-
-- compute_aggregate_ratings(city, output_dir)
-
-  - Loads city reviews (or global reviews) and computes per-hotel aggregate ratings (overall, cleanliness, service, location, value). Writes hotel*ratings*{City}.csv.
-
-- enrich_hotels_perplexity(city, output_dir, delay_seconds, max_hotels)
-
-  - Iterates hotels, builds enrichment payloads (via extract_hotel_data_from_row), writes JSONL lines (one per hotel) used for downstream enrichment/ML/API calls. Throttles via delay_seconds.
-
-- merge_sql_tables(city, output_dir)
-
-  - Reads hotels CSV + enrichment JSONL (and ratings CSV if present), merges enrichment into normalized DataFrames (hotels, rooms, amenities, policies), and exports final CSVs ready for DB bulk load.
+- filtering.check_if_filtering_needed(city)
+  - Checks GCS for previously filtered data; returns a branch key used by the DAG.
+- filtering.filter_all_city_hotels(city, all_hotels_path)
+  - Filters the master hotels dataset for a given city; writes city CSV.
+- filtering.filter_all_city_reviews(city, all_reviews_path)
+  - Filters the master reviews dataset for the city; writes reviews CSV.
+- batch_selection.select_next_batch(city, batch_size)
+  - Selects the next batch of hotel IDs to process; writes `batch_hotels.csv`.
+- batch_selection.filter_reviews_for_batch(city)
+  - Filters reviews for hotels in the current batch; writes `batch_reviews.csv`.
+- transform.compute_aggregate_ratings(city)
+  - Computes per-hotel mean ratings; writes `batch_hotel_ratings.csv`.
+- transform.enrich_hotels_gemini(city, delay_seconds, max_hotels)
+  - Calls Gemini to extract structured metadata per hotel; writes `batch_enrichment.jsonl`.
+- transform.prepare_hotel_data_for_db(city)
+  - Merges batch hotels + enrichment (+ ratings) into normalized CSVs for DB load.
+- sql.queries.create_all_tables()
+  - Ensures required tables exist.
+- sql.queries.bulk_insert_from_csvs(csv_directory)
+  - Bulk loads batch CSVs into the database.
+- accumulated.append_batch_to_accumulated(city)
+  - Appends the batch results to accumulated artifacts in GCS.
+- state_management.update_processing_state(city)
+  - Updates `state.json` (counts, processed IDs, batch metadata) in GCS/local.
 
 - scripts/
 

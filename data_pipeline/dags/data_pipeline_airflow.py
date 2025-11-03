@@ -1,20 +1,27 @@
 from airflow import DAG
-from airflow.operators.python_operator import PythonOperator
+from airflow.operators.python_operator import PythonOperator,BranchPythonOperator
+from airflow.operators.empty import EmptyOperator
+
 from datetime import datetime, timedelta
 import os
 import sys
 
 
 # Import our custom functions
-from src.extract import extract_metadata, extract_reviews
-from src.transform import (
-    extract_reviews_based_on_city, 
+from src.transform import ( 
     compute_aggregate_ratings, 
     enrich_hotels_perplexity,
-    merge_sql_tables
+    prepare_hotel_data_for_db
 )
-from sql.load_to_database import load_all_hotel_data_to_database
-from sql.queries import create_all_tables
+from sql.queries import create_all_tables,bulk_insert_from_csvs
+from src.filtering import check_if_filtering_needed,filter_all_city_hotels,filter_all_city_reviews
+from src.batch_selection import select_next_batch,filter_reviews_for_batch
+from src.accumulated import append_batch_to_accumulated
+from src.state_management import update_processing_state
+
+#Configs
+CITY = 'Boston'
+BATCH_SIZE = 50
 
 # Default arguments
 default_args = {
@@ -34,117 +41,158 @@ dag = DAG(
     default_args=default_args,
     description='Hotel Data pipeline',
     max_active_runs=1,
-    tags=['hotel', 'data-pipeline', 'perplexity', 'reviews']
+    schedule_interval=None,
 )
 
-# Task 1: Extract hotel metadata from offering.txt
-extract_hotels_task = PythonOperator(
-    task_id='extract_hotels',
-    python_callable=extract_metadata,
+def check_filtering_branch(**context):
+    result = check_if_filtering_needed(city=CITY)
+    
+    if result == 'skip_filtering':
+        return 'skip_filtering'
+    else:
+        return 'filter_hotels'
+
+# Check if filtering is needed or skip to batch selection
+check_filtering_task = BranchPythonOperator(
+    task_id='check_if_filtering_needed',
+    python_callable=check_filtering_branch,
+    dag=dag,
+)
+
+# Empty operator for skipping filtering step
+skip_filtering_task = EmptyOperator(
+    task_id='skip_filtering',
+    dag=dag,
+)
+
+# Filter raw hotel data by city from master dataset
+filter_hotels_task = PythonOperator(
+    task_id='filter_all_city_hotels',
+    python_callable=filter_all_city_hotels,
     op_kwargs={
-        'city': 'Boston',
-        'sample_size': 50,
-        'random_seed': 42,
-        'offering_path': 'data/raw/hotels.txt',
-        'output_dir': 'output'
+        'city': CITY,
+        'all_hotels_path': 'data/raw/hotels.txt'
     },
     dag=dag,
-    retries=1
 )
 
-# Task 2: Extract reviews from review.txt
-extract_reviews_task = PythonOperator(
-    task_id='extract_reviews',
-    python_callable=extract_reviews,
+# Filter raw reviews data by city from master dataset
+filter_reviews_task = PythonOperator(
+    task_id='filter_all_city_reviews',
+    python_callable=filter_all_city_reviews,
     op_kwargs={
-        'reviews_path': 'data/raw/reviews.txt',
-        'output_dir': 'output'
+        'city': CITY,
+        'all_reviews_path': 'data/raw/reviews.txt'
     },
     dag=dag,
-    retries=1
 )
 
-# Task 3: Filter reviews for city hotels
-filter_city_reviews_task = PythonOperator(
-    task_id='extract_reviews_based_on_city',
-    python_callable=extract_reviews_based_on_city,
+# Join point after filtering check branches
+join_filtering_task = EmptyOperator(
+    task_id='join_after_filtering_check',
+    trigger_rule='none_failed_min_one_success',
+    dag=dag,
+)
+
+# Select next batch of hotels to process based on state
+select_batch_task = PythonOperator(
+    task_id='select_next_batch',
+    python_callable=select_next_batch,
     op_kwargs={
-        'city': 'Boston',
-        'output_dir': 'output'
+        'city': CITY,
+        'batch_size': 10
     },
     dag=dag,
-    retries=1
 )
 
-# Task 4: Compute aggregate ratings (parallel with enrichment)
+# Filter reviews for the current batch of hotels
+filter_batch_reviews_task = PythonOperator(
+    task_id='filter_reviews_for_batch',
+    python_callable=filter_reviews_for_batch,
+    op_kwargs={'city': CITY},
+    dag=dag,
+)
+
+# Compute aggregate ratings from reviews for batch hotels
 compute_ratings_task = PythonOperator(
     task_id='compute_aggregate_ratings',
     python_callable=compute_aggregate_ratings,
     op_kwargs={
-        'city': 'Boston',
-        'output_dir': 'output'
+        'city': CITY
     },
     dag=dag,
-    retries=1
 )
 
-# Task 5: Enrich hotels with Perplexity API (parallel with ratings)
+# Enrich hotel data with metadata from Perplexity API
 enrich_hotels_task = PythonOperator(
-    task_id='get_metadata_hotel_perplexity',
+    task_id='get_hotel_enrichment_data',
     python_callable=enrich_hotels_perplexity,
     op_kwargs={
-        'city': 'Boston',
-        'output_dir': 'output',
+        'city': CITY,
         'delay_seconds': 12,
-        'max_hotels': None  # Process all hotels
+        'max_hotels': None
     },
     dag=dag,
-    retries=3,  # More retries for API calls
-    retry_delay=timedelta(minutes=2)
 )
 
-# Task 6: Merge all data into SQL-ready tables
-merge_tables_task = PythonOperator(
-    task_id='merge_sql_tables',
-    python_callable=merge_sql_tables,
+# Merge and prepare final database-ready CSV files
+prepare_hotel_data_for_db_task = PythonOperator(
+    task_id='prepare_data_for_db',
+    python_callable=prepare_hotel_data_for_db,
     op_kwargs={
-        'city': 'Boston',
-        'output_dir': 'output'
+        'city': CITY,
     },
     dag=dag,
-    retries=1
 )
 
-
-
-# Task 7: Create database tables
+# Create all required database tables if they don't exist
 create_tables_task = PythonOperator(
     task_id='create_tables',
     python_callable=create_all_tables,
     dag=dag,
-    retries=1
 )
 
-# Task 8: Load data to database
+# Bulk insert batch data into PostgreSQL database
 load_to_db_task = PythonOperator(
-    task_id='load_to_db',
-    python_callable=load_all_hotel_data_to_database,
+    task_id='insert_data_to_db',
+    python_callable=bulk_insert_from_csvs,
     op_kwargs={
-        'csv_directory': 'output'
+        'csv_directory': f'data/processed/{CITY}'
     },
     dag=dag,
-    retries=2
 )
 
-# Define task dependencies
-# Step 1: Extract raw data
-[extract_hotels_task, extract_reviews_task] >> filter_city_reviews_task
+# Append current batch to accumulated results in GCS
+accumulate_batch_task = PythonOperator(
+    task_id='accumulate_batch',
+    python_callable=append_batch_to_accumulated,
+    op_kwargs={
+        'city': CITY
+    },
+    dag=dag,
+)
 
-# Step 2: Parallel processing
-filter_city_reviews_task >> [compute_ratings_task, enrich_hotels_task]
+# Update processing state with completed batch information
+update_state_task = PythonOperator(
+    task_id='update_state',
+    python_callable=update_processing_state,
+    op_kwargs={
+        'city': CITY
+    },
+    dag=dag,
+)
 
-# Step 3: Merge and Create tables
-[compute_ratings_task, enrich_hotels_task] >> merge_tables_task >> create_tables_task
+# Task Dependencies
+check_filtering_task >> [filter_hotels_task, skip_filtering_task]
 
-# Step 4: Database operations
-create_tables_task >> load_to_db_task
+# Filtering path
+filter_hotels_task >> filter_reviews_task >> join_filtering_task
+
+# Skip path
+skip_filtering_task >> join_filtering_task
+
+join_filtering_task >> select_batch_task >> filter_batch_reviews_task 
+
+filter_batch_reviews_task >> [compute_ratings_task, enrich_hotels_task] >> prepare_hotel_data_for_db_task
+
+prepare_hotel_data_for_db_task >> create_tables_task >> load_to_db_task >> accumulate_batch_task >> update_state_task

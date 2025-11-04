@@ -6,6 +6,7 @@ from src.bucket_util import download_file_from_gcs
 import pandas as pd
 from dotenv import load_dotenv
 import json
+from datetime import datetime
 
 # Configure logging
 logger = logging.getLogger(__name__)

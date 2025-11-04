@@ -6,7 +6,7 @@ This README explains how to set up the environment, run the pipeline, and the co
 
 - Purpose: Extract hotel metadata and reviews, transform/validate, and load into a Postgres (Cloud) database.
 - Stack: Airflow (local via docker-compose), Python scripts (ETL), Postgres (Cloud SQL or local).
-- CSV source: Local CSV files (default directory `intermediate/csv`) → uploaded to DB via the loader.
+- Data flow: Raw data from GCS → Filtered by city → Batched processing → Enrichment via Gemini API → Database load.
 
 ## Prerequisites
 
@@ -14,7 +14,8 @@ This README explains how to set up the environment, run the pipeline, and the co
 - Docker & docker-compose.
 - Python 3.9+ and pip.
 - Access/credentials for your cloud DB (Cloud SQL or other Postgres).
-- (Optional) Google Cloud SDK if using Cloud SQL Proxy.
+- Google Cloud SDK if using GCS and Cloud SQL Proxy.
+- Google Cloud Storage bucket with raw hotel and review data.
 
 ## Setup
 
@@ -32,13 +33,16 @@ python -m pip install -r requirements.txt
 
 3. Configure environment
 
-- Create a `.env` file in this folder (or set env vars in your shell). Typical variables used by the DB pool:
-  - DB_HOST
-  - DB_PORT
-  - DB_NAME
-  - DB_USER
-  - DB_PASSWORD
-- The loader reads `LOCAL_CSV_PATH` from env (defaults to `intermediate/csv`).
+- Create a `.env` file in the `data_pipeline/` directory (same directory as `docker-compose.yaml`). Required variables:
+  - `CLOUD_DB_HOST` - Database host
+  - `CLOUD_DB_PORT` - Database port
+  - `CLOUD_DB_NAME` - Database name
+  - `CLOUD_DB_USER` - Database user
+  - `CLOUD_DB_PASSWORD` - Database password
+  - `GEMINI_API_KEY` - Google Gemini API key for hotel enrichment
+  - `GCS_RAW_HOTELS_DATA_PATH` - GCS path to raw hotels data (e.g., `raw/hotels.txt`)
+  - `GCS_RAW_REVIEWS_DATA_PATH` - GCS path to raw reviews data (e.g., `raw/reviews.txt`)
+  - `GCS_BUCKET_NAME` - Google Cloud Storage bucket name
 
 4. (If using Cloud SQL) Start Cloud SQL Proxy
 
@@ -48,151 +52,201 @@ python -m pip install -r requirements.txt
 bash scripts/run_proxy.sh
 ```
 
-This creates a local socket/port that the `db_pool` can connect to, enabling secure access to Cloud DB.
+This creates a local socket/port that the database connection pool can connect to, enabling secure access to Cloud DB.
 
 ## Run Airflow (local dev)
 
-- Start services (Postgres, Redis, Airflow) using docker-compose:
+- **First time setup or after updating `requirements.txt`**: Build and start services (Postgres, Redis, Airflow) using docker-compose:
+
+```bash
+docker-compose up -d --build
+```
+
+- **Subsequent starts** (if containers already exist): Start services:
 
 ```bash
 docker-compose up -d
 ```
 
-- Airflow web UI: http://localhost:8080
+- **Note**: If you update `requirements.txt`, you must rebuild the containers to install new packages:
+  ```bash
+  docker-compose down
+  docker-compose up -d --build
+  ```
+
+- Airflow web UI: http://localhost:8081 (default credentials: `airflow` / `airflow`)
 - The DAG definition is located at `dags/data_pipeline_airflow.py`. Ensure docker-compose mounts the `dags/` directory or copy the DAG into the Airflow DAGs folder.
 
-## Run the loader (upload CSV → DB)
+## How data is processed and uploaded to Cloud DB (summary of process)
 
-- Verify CSVs exist in the CSV directory (default `intermediate/csv`):
+The pipeline processes hotel data in batches through the following stages:
 
-  - hotels.csv, rooms.csv, reviews.csv, amenities.csv, policies.csv
+1. **Filtering** (`filtering.py`):
+   - Downloads raw hotels and reviews from GCS
+   - Filters hotels and reviews by city
+   - Uploads filtered data back to GCS
 
-- Run the end-to-end loader from the project root:
+2. **Batch Selection** (`batch_selection.py`):
+   - Selects next batch of unprocessed hotels based on state tracking
+   - Filters reviews for hotels in the current batch
+   - Writes batch files locally and to GCS
 
-```bash
-python -c "from sql.load_to_database import load_all_hotel_data_to_database; print(load_all_hotel_data_to_database('intermediate/csv'))"
-```
+3. **Enrichment** (`transform.py` + `utils_gemini.py`):
+   - Computes aggregate ratings from reviews
+   - Enriches hotels with metadata using Gemini Live 2.5 Flash API
+   - Merges enrichment data with hotel data
 
-- Or run interactively / as part of a script:
+4. **Database Load** (`sql/queries.py`):
+   - Uses connection pool from `sql/db_pool.py` to acquire psycopg2 connections
+   - Main entrypoint: `bulk_insert_from_csvs(csv_directory)`:
+     - Reads processed CSV files (batch_hotels.csv, batch_rooms.csv, batch_amenities.csv, batch_policies.csv, batch_reviews.csv)
+     - Groups related data by hotel_id
+     - Calls `insert_one_hotel_complete()` for each hotel:
+       - Inserts hotel with ON CONFLICT handling
+       - Batch inserts rooms, amenities, policies, and reviews using `psycopg2.extras.execute_values`
+       - Uses ON CONFLICT DO NOTHING to handle duplicates
+     - Returns success/error counts
 
-```python
-from sql.load_to_database import load_all_hotel_data_to_database
-results = load_all_hotel_data_to_database('/path/to/csv_dir')
-print(results)
-```
+5. **State Management** (`state_management.py`):
+   - Updates processing state with completed batch information
+   - Tracks processed hotel IDs to avoid duplicates
 
-- You can also run `sql/test_connection.py` to validate DB connectivity and list tables.
-
-## How local data is uploaded to Cloud DB (summary of process)
-
-- The loader uses the connection pool in `sql/db_pool.py` (singleton `db_pool`) to acquire a psycopg2 connection.
-- Main entrypoint: `load_all_hotel_data_to_database(csv_directory)`:
-
-  - Validates `csv_directory` exists.
-  - Imports tables in a safe order to honor FK constraints:
-    - hotels → rooms → reviews → amenities → policies
-  - For each table it calls a table-specific importer:
-    - import_hotels_from_local(csv_path)
-    - import_rooms_from_local(csv_path)
-    - import_reviews_from_local(csv_path)
-    - import_amenities_from_local(csv_path)
-    - import_policies_from_local(csv_path)
-
-- Table importers call `batch_upsert_csv_auto(...)` which:
-
-  - Opens a DB connection via `get_db_connection()` (wraps `db_pool.get_connection()`).
-  - Reads the target table column types from `information_schema.columns` to decide casting rules.
-  - Builds an INSERT ... ON CONFLICT ... DO UPDATE query (UPSERT) with proper casts:
-    - Numeric/text/date/timestamp columns are cast using `CAST(NULLIF(%s, '') AS <TYPE>)` so empty strings become NULL.
-  - Batches rows (default batch_size 1000) and executes them via `psycopg2.extras.execute_batch` for performance.
-  - Commits at completion; rolls back on error and raises.
-
-- There is also `batch_upsert_csv(...)` (simpler variant) that directly inserts without automatic type detection/casting — useful when CSV already matches DB types.
-
-- Logging is emitted for progress and summary; returned values are row counts per table, or -1 on failure.
+6. **Accumulation** (`accumulated.py`):
+   - Appends batch results to accumulated files in GCS
+   - Maintains city-wide aggregated datasets
 
 ## Files and code structure (detailed)
 
-- docker-compose.yaml
+### Root files
 
+- `docker-compose.yaml`
   - Local stack for Airflow (Postgres + Redis + Airflow web/scheduler/worker).
 
-- requirements.txt
+- `requirements.txt`
+  - Python dependencies (Airflow, psycopg2, pandas, python-dotenv, google-genai, etc).
 
-  - Python dependencies (Airflow, psycopg2, pandas, python-dotenv, etc).
+### dags/
 
-- dags/
+- `data_pipeline_airflow.py`
+  - Airflow DAG wiring for filtering, batching, enrichment (Gemini), aggregation, export, and loading.
+  - Defines task dependencies and orchestrates the full pipeline.
 
-  - data_pipeline_airflow.py
-    - Airflow DAG wiring extraction, transform, validation, and loader tasks.
-  - src/
-    - extract.py — functions to download and save raw hotel metadata and reviews (source files).
-    - transform.py — lightweight preprocessing helpers (e.g., review cleanup, city filtering).
-    - validation.py — simple data checks and assertions before load.
-    - bucket_util.py — optional helpers for reading/writing cloud storage buckets.
+- `src/`
+  - `transform.py` — Enrichment, aggregation, merge/export helpers. Key functions:
+    - `compute_aggregate_ratings(city)` — Computes per-hotel mean ratings from reviews
+    - `prepare_hotel_data_for_db(city)` — Merges batch hotels + enrichment + ratings into normalized CSVs
+  
+  - `filtering.py` — Filter all-city hotels/reviews and per-batch reviews. Key functions:
+    - `check_if_filtering_needed(city)` — Checks GCS for previously filtered data; returns branch key
+    - `filter_all_city_hotels(city)` — Filters master hotels dataset for a given city; writes city CSV
+    - `filter_all_city_reviews(city)` — Filters master reviews dataset for the city; writes reviews CSV
+  
+  - `batch_selection.py` — Selects next batch of hotel IDs based on state; prepares batch files. Key functions:
+    - `select_next_batch(city, batch_size)` — Selects next batch of unprocessed hotels; writes `batch_hotels.csv`
+    - `filter_reviews_for_batch(city)` — Filters reviews for hotels in current batch; writes `batch_reviews.csv`
+  
+  - `accumulated.py` — Appends completed batch outputs to accumulated results in GCS. Key functions:
+    - `append_batch_to_accumulated(city)` — Appends batch results to accumulated artifacts in GCS
+  
+  - `state_management.py` — Maintains `state.json` per city; tracks processed IDs and batches. Key functions:
+    - `update_processing_state(city)` — Updates state.json with processed IDs and batch metadata
+  
+  - `utils.py` — Parsing, cleaning, enrichment merge utilities. Key functions:
+    - `parse_raw_hotels(file_path)` — Parses JSONL hotel data into DataFrame
+    - `parse_raw_reviews(file_path)` — Parses JSONL review data into DataFrame
+    - `calculate_all_hotel_ratings(reviews_df)` — Computes aggregate ratings per hotel
+    - `merge_hotel_data(row, enrichment_data)` — Merges hotel row with Gemini enrichment data
+    - `export_hotel_data_to_csv(data_dict, output_dir)` — Exports normalized hotel data to CSVs
+  
+  - `utils_gemini.py` — Gemini Live 2.5 Flash client and prompt formatting. Key functions:
+    - `get_hotel_data(hotel_name, location)` — Synchronous wrapper for async Gemini API call
+    - `get_hotel_data_async(hotel_name, location)` — Async function to get hotel data from Gemini API
+    - `create_prompt(hotel_name, location)` — Creates structured prompt for hotel data extraction
+  
+  - `prompt.py` — Hotel data extraction functions (legacy Perplexity support + Gemini wrapper). Key functions:
+    - `extract_hotel_data_gemini(hotel_name, location)` — Extracts hotel data using Gemini (delegates to utils_gemini)
+    - `extract_hotel_data_perplexity(hotel_name, location)` — Legacy Perplexity API extraction
+    - `enrich_hotels_gemini(city, delay_seconds, max_hotels)` — Enriches hotels in batch using Gemini
+  
+  - `path.py` — Path management utilities for local and GCS paths. Key functions:
+    - `get_raw_hotels_path()` — Returns path to raw hotels file
+    - `get_filtered_hotels_path(city)` — Returns path to filtered hotels CSV for city
+    - `get_batch_hotels_path(city)` — Returns path to batch hotels CSV
+    - `get_processed_dir(city)` — Returns path to processed data directory
+    - `get_gcs_*_path()` functions — Returns GCS paths for various data types
+  
+  - `bucket_util.py` — Helpers for reading/writing Google Cloud Storage. Key functions:
+    - `upload_file_to_gcs(local_path, gcs_path)` — Uploads file to GCS
+    - `download_file_from_gcs(gcs_path, local_path)` — Downloads file from GCS
 
-Transform helpers (example functions from transform module)
+### scripts/
 
-- extract_reviews_based_on_city(city, output_dir)
+- `run_proxy.sh` — Helper to start Cloud SQL Proxy; edit for your project/credentials.
 
-  - Filters the main reviews CSV to keep only reviews for hotels listed in the city-specific hotel CSV. Writes a city-specific reviews CSV and returns its path.
+### sql/
 
-- compute_aggregate_ratings(city, output_dir)
+- `db_pool.py`
+  - Implements connection pool singleton using `psycopg2.pool.ThreadedConnectionPool`
+  - Exposes `get_connection()` context manager for database connections
+  - Reads DB connection parameters from environment variables (CLOUD_DB_*)
+  - Initializes pool on module import
 
-  - Loads city reviews (or global reviews) and computes per-hotel aggregate ratings (overall, cleanliness, service, location, value). Writes hotel*ratings*{City}.csv.
+- `queries.py`
+  - SQL DDL helpers to create tables and insert data. Key functions:
+    - `create_all_tables()` — Creates all required tables (hotels, rooms, reviews, amenities, policies)
+    - `list_tables()` — Lists all tables in the database
+    - `bulk_insert_from_csvs(csv_directory)` — Main entrypoint: reads processed CSVs and loads into database
+    - `insert_one_hotel_complete(hotel_data, rooms, amenities, policies, reviews)` — Inserts one hotel with all related data
+    - `clean_dict_for_db(d)` — Converts NaN values to None for database compatibility
 
-- enrich_hotels_perplexity(city, output_dir, delay_seconds, max_hotels)
-
-  - Iterates hotels, builds enrichment payloads (via extract_hotel_data_from_row), writes JSONL lines (one per hotel) used for downstream enrichment/ML/API calls. Throttles via delay_seconds.
-
-- merge_sql_tables(city, output_dir)
-
-  - Reads hotels CSV + enrichment JSONL (and ratings CSV if present), merges enrichment into normalized DataFrames (hotels, rooms, amenities, policies), and exports final CSVs ready for DB bulk load.
-
-- scripts/
-
-  - run_proxy.sh — helper to start Cloud SQL Proxy; edit for your project/credentials.
-
-- sql/
-  - db_pool.py
-    - Implements `DatabasePool` singleton and exposes `db_pool` used by loaders. Reads DB connection parameters from env.
-  - load_to_database.py
-    - get_db_connection() — returns a psycopg2 connection via db_pool.
-    - batch_upsert_csv(...) — batch UPSERT using raw placeholders (no automatic casting).
-    - batch_upsert_csv_auto(...) — batch UPSERT with automatic type detection and value casting (preferred).
-    - import_hotels_from_local(...) — importer for hotels.csv.
-    - import_rooms_from_local(...) — importer for rooms.csv.
-    - import_reviews_from_local(...) — importer for reviews.csv.
-    - import_amenities_from_local(...) — importer for amenities.csv.
-    - import_policies_from_local(...) — importer for policies.csv.
-    - load_all_hotel_data_to_database(...) — orchestrator that runs the importers in order and returns a results dict.
-  - queries.py
-    - SQL DDL helpers to create tables and insert helper snippets. Useful to inspect schema expectations (primary keys, column types) which must match CSV headers listed in load_to_database.py.
-  - test_connection.py
-    - Simple script to validate DB connectivity and list tables.
+- `test_connection.py`
+  - Simple script to validate DB connectivity and list tables.
 
 ## CSV format expectations
 
-- Each CSV must include a header row with column names matching the `columns` lists defined in the import\_\* functions.
-- Missing cells should be empty strings; loader casts empty strings to NULL for typed columns.
-- File names expected by default:
-  - hotels.csv, rooms.csv, reviews.csv, amenities.csv, policies.csv
-- If your schema differs adjust the `columns` arrays in `sql/load_to_database.py` to match.
+The pipeline expects processed CSV files in the following format:
+
+- `batch_hotels.csv` — Hotel records with columns matching the hotels table schema
+- `batch_rooms.csv` — Room records with `hotel_id` foreign key
+- `batch_amenities.csv` — Amenity records with `hotel_id` foreign key
+- `batch_policies.csv` — Policy records with `hotel_id` foreign key
+- `batch_reviews.csv` — Review records with `hotel_id` foreign key
+
+Each CSV must include a header row with column names matching the database table schemas defined in `sql/queries.py`. Missing cells should be empty strings or NaN; the loader converts NaN values to NULL.
+
+## Database schema
+
+The database consists of five main tables:
+
+1. **hotels** — Main hotel information (hotel_id, official_name, star_rating, description, address, ratings, etc.)
+2. **rooms** — Room types for each hotel (room_id, hotel_id, room_type, bed_configuration, etc.)
+3. **reviews** — Reviews for hotels (review_id, hotel_id, overall_rating, review_text, etc.)
+4. **amenities** — Amenities by category (amenity_id, hotel_id, category, description, etc.)
+5. **policies** — Hotel policies (policy_id, hotel_id, check_in_time, check_out_time, etc.)
+
+See `sql/queries.py` for complete table definitions with constraints and data types.
 
 ## Tips & troubleshooting
 
-- If you use Cloud SQL, confirm Cloud SQL Proxy is running and that `db_pool` connects to the proxy host/port.
-- Check logs for stack traces; loader logs row counts and failures.
+- If you use Cloud SQL, confirm Cloud SQL Proxy is running and that the connection pool connects to the proxy host/port.
+- Check logs for stack traces; all modules use Python logging.
 - Validate table schemas (types and primary keys) to ensure ON CONFLICT keys align with CSV columns.
-- For large loads consider increasing `batch_size` and tuning Postgres settings.
+- For large loads, the pipeline processes hotels in batches (default 50) to avoid memory issues.
+- Ensure GCS bucket permissions are correctly configured for read/write operations.
+- Check that `GEMINI_API_KEY` is set correctly if enrichment tasks are failing.
 
-## Example — run full import (local CSV → Cloud DB)
+## Example — run full pipeline
 
 1. Start Cloud SQL Proxy (if required).
-2. Ensure `.env` is present with DB connection details.
-3. Install deps: `pip install -r requirements.txt`
-4. Run import:
+2. Ensure `.env` is present with all required connection details and API keys.
+3. Build and start Airflow (this installs requirements from `requirements.txt`): `docker-compose up -d --build`
+4. Access Airflow UI: http://localhost:8081 (credentials: `airflow` / `airflow`)
+5. Trigger the DAG for your city (e.g., "Boston")
+6. Monitor progress in the Airflow UI
 
-```bash
-python -c "from sql.load_to_database import load_all_hotel_data_to_database; print(load_all_hotel_data_to_database('intermediate/csv'))"
-```
+The pipeline will:
+- Filter raw data by city
+- Process hotels in batches
+- Enrich with Gemini API
+- Load into database
+- Update state and accumulate results

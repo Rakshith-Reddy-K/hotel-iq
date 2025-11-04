@@ -43,6 +43,8 @@ def prepare_hotel_data_for_db(city: str = 'Boston'):
     hotels_df = pd.read_csv(hotels_csv)
 
     hotel_id_to_data = {}
+    hotels_with_errors = set()
+    
     with open(enrichment_path, 'r', encoding='utf-8') as f:
         for line in f:
             line = line.strip()
@@ -51,9 +53,32 @@ def prepare_hotel_data_for_db(city: str = 'Boston'):
             try:
                 obj = json.loads(line)
                 hid = obj.get('hotel_id')
+                
+                if hid is None:
+                    continue
+                
+                # Check if there's a top-level error (from exception handling during extraction)
+                # Format: {"hotel_id": ..., "name": ..., "error": "..."}
+                if 'error' in obj and 'data' not in obj:
+                    hotels_with_errors.add(hid)
+                    continue
+                
                 data = obj.get('data')
-                if hid is not None and isinstance(data, dict) and data.get('hotel') is not None:
-                    hotel_id_to_data[hid] = data
+                
+                # Check if data has an error field or hotel is null
+                # Format: {"hotel_id": ..., "data": {"error": "...", "hotel": null, ...}}
+                if isinstance(data, dict):
+                    # If data has an error field or hotel is explicitly null, mark as error
+                    if 'error' in data or data.get('hotel') is None:
+                        hotels_with_errors.add(hid)
+                        continue
+                    
+                    # Only add hotels with valid enrichment data (hotel field is not null)
+                    if data.get('hotel') is not None:
+                        hotel_id_to_data[hid] = data
+                else:
+                    # If data is not a dict or is None, mark as error
+                    hotels_with_errors.add(hid)
             except Exception:
                 continue
 
@@ -64,6 +89,17 @@ def prepare_hotel_data_for_db(city: str = 'Boston'):
 
     for _, row in hotels_df.iterrows():
         hid = row.get('id')
+        
+        # Skip hotels that had errors during enrichment
+        if hid in hotels_with_errors:
+            logger.warning(f"Skipping hotel {hid} ({row.get('name', 'Unknown')}) due to enrichment error")
+            continue
+        
+        # Only process hotels that have successful enrichment data
+        if hid not in hotel_id_to_data:
+            logger.warning(f"Skipping hotel {hid} ({row.get('name', 'Unknown')}) - no enrichment data available")
+            continue
+        
         merged = merge_hotel_data(row, hotel_id_to_data.get(hid))
         if not merged['hotels'].empty:
             hotels_acc.append(merged['hotels'])

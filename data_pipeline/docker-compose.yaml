@@ -173,7 +173,15 @@ services:
 
   airflow-scheduler:
     <<: *airflow-common
-    command: scheduler
+    command:
+      - bash
+      - -c
+      - |
+        if [[ -e /requirements.txt ]]; then
+          echo "Installing requirements from /requirements.txt..."
+          pip install --no-cache-dir -r /requirements.txt || echo "Warning: Some packages may have failed to install"
+        fi
+        exec airflow scheduler
     healthcheck:
       test: ["CMD", "curl", "--fail", "http://localhost:8974/health"]
       interval: 30s
@@ -188,7 +196,15 @@ services:
 
   airflow-worker:
     <<: *airflow-common
-    command: celery worker
+    command:
+      - bash
+      - -c
+      - |
+        if [[ -e /requirements.txt ]]; then
+          echo "Installing requirements from /requirements.txt..."
+          pip install --no-cache-dir -r /requirements.txt || echo "Warning: Some packages may have failed to install"
+        fi
+        exec airflow celery worker
     healthcheck:
       # yamllint disable rule:line-length
       test:
@@ -237,7 +253,10 @@ services:
       - |
         # Install additional requirements
         if [[ -e /requirements.txt ]]; then
-        pip install --no-cache-dir -r /requirements.txt
+          echo "Installing requirements from /requirements.txt..."
+          pip install --no-cache-dir -r /requirements.txt || echo "Warning: Some packages may have failed to install"
+        else
+          echo "Warning: /requirements.txt not found"
         fi
         if [[ -z "${AIRFLOW_UID}" ]]; then
           echo

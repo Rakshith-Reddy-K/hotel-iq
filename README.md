@@ -33,7 +33,7 @@ python -m pip install -r requirements.txt
 
 3. Configure environment
 
-- Create a `.env` file in this folder (or set env vars in your shell). Required variables:
+- Create a `.env` file in the `data_pipeline/` directory (same directory as `docker-compose.yaml`). Required variables:
   - `CLOUD_DB_HOST` - Database host
   - `CLOUD_DB_PORT` - Database port
   - `CLOUD_DB_NAME` - Database name
@@ -56,13 +56,25 @@ This creates a local socket/port that the database connection pool can connect t
 
 ## Run Airflow (local dev)
 
-- Start services (Postgres, Redis, Airflow) using docker-compose:
+- **First time setup or after updating `requirements.txt`**: Build and start services (Postgres, Redis, Airflow) using docker-compose:
+
+```bash
+docker-compose up -d --build
+```
+
+- **Subsequent starts** (if containers already exist): Start services:
 
 ```bash
 docker-compose up -d
 ```
 
-- Airflow web UI: http://localhost:8080
+- **Note**: If you update `requirements.txt`, you must rebuild the containers to install new packages:
+  ```bash
+  docker-compose down
+  docker-compose up -d --build
+  ```
+
+- Airflow web UI: http://localhost:8081 (default credentials: `airflow` / `airflow`)
 - The DAG definition is located at `dags/data_pipeline_airflow.py`. Ensure docker-compose mounts the `dags/` directory or copy the DAG into the Airflow DAGs folder.
 
 ## How data is processed and uploaded to Cloud DB (summary of process)
@@ -227,11 +239,10 @@ See `sql/queries.py` for complete table definitions with constraints and data ty
 
 1. Start Cloud SQL Proxy (if required).
 2. Ensure `.env` is present with all required connection details and API keys.
-3. Install deps: `pip install -r requirements.txt`
-4. Start Airflow: `docker-compose up -d`
-5. Access Airflow UI: http://localhost:8080
-6. Trigger the DAG for your city (e.g., "Boston")
-7. Monitor progress in the Airflow UI
+3. Build and start Airflow (this installs requirements from `requirements.txt`): `docker-compose up -d --build`
+4. Access Airflow UI: http://localhost:8081 (credentials: `airflow` / `airflow`)
+5. Trigger the DAG for your city (e.g., "Boston")
+6. Monitor progress in the Airflow UI
 
 The pipeline will:
 - Filter raw data by city

@@ -108,24 +108,6 @@ def parse_raw_reviews(file_path: str) -> pd.DataFrame:
 
     return df
 
-def filter_hotels_by_city(
-    df: pd.DataFrame,
-    city_name: str,
-    sample_size: int = 25,
-    random_seed: int = 42
-) -> pd.DataFrame:
-    if 'address_locality' in df.columns:
-        city_df = df[df['address_locality'].str.contains(city_name, case=False, na=False)]
-    elif 'locality' in df.columns:
-        city_df = df[df['locality'].str.contains(city_name, case=False, na=False)]
-    else:
-        raise ValueError("Could not find city column in DataFrame")
-
-    if len(city_df) < sample_size:
-        return city_df
-
-    return city_df.sample(n=sample_size, random_state=random_seed)
-
 def calculate_all_hotel_ratings(reviews_df: Optional[pd.DataFrame] = None, csv_path: str = 'reviews.csv') -> pd.DataFrame:
     if reviews_df is None:
         reviews_df = pd.read_csv(csv_path)

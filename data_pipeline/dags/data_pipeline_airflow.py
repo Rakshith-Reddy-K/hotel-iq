@@ -1,6 +1,7 @@
 from airflow import DAG
 from airflow.operators.python_operator import PythonOperator,BranchPythonOperator
 from airflow.operators.empty import EmptyOperator
+from airflow.operators.bash import BashOperator
 
 from datetime import datetime, timedelta
 
@@ -180,6 +181,12 @@ update_state_task = PythonOperator(
     dag=dag,
 )
 
+push_version_data_to_git_task = BashOperator(
+    task_id='push_version_data_to_git',
+    bash_command='/opt/airflow/hotel-iq/data_pipeline/scripts/version_data.sh ',
+    dag=dag
+)
+
 # Task Dependencies
 check_filtering_task >> [filter_hotels_task, skip_filtering_task]
 
@@ -193,4 +200,6 @@ join_filtering_task >> select_batch_task >> filter_batch_reviews_task
 
 filter_batch_reviews_task >> [compute_ratings_task, enrich_hotels_task] >> prepare_hotel_data_for_db_task
 
-prepare_hotel_data_for_db_task >> create_tables_task >> load_to_db_task >> accumulate_batch_task >> update_state_task
+prepare_hotel_data_for_db_task >> create_tables_task >> load_to_db_task
+
+load_to_db_task >> accumulate_batch_task >> update_state_task >> push_version_data_to_git_task

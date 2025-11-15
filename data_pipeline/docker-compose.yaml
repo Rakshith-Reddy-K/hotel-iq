@@ -48,10 +48,10 @@ x-airflow-common: &airflow-common
   # In order to add custom dependencies or upgrade provider packages you can use your extended image.
   # Comment the image line, place your Dockerfile in the directory where you placed the docker-compose.yaml
   # and uncomment the "build" line below, Then run `docker-compose build` to build the images.
-  image: ${AIRFLOW_IMAGE_NAME:-apache/airflow:2.10.2}
+  # image: ${AIRFLOW_IMAGE_NAME:-apache/airflow:2.10.2}
   env_file:
     - .env
-  # build: .
+  build: .
   environment: &airflow-common-env
     AIRFLOW__CORE__EXECUTOR: CeleryExecutor
     AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@postgres/airflow
@@ -82,6 +82,7 @@ x-airflow-common: &airflow-common
     GCP_REGION: ${GCP_REGION}
     GCP_INSTANCE_NAME: ${GCP_INSTANCE_NAME}
     GOOGLE_APPLICATION_CREDENTIALS: /opt/airflow/config/gcp-service-account.json
+    GIT_TOKEN: ${GIT_TOKEN}
     # WARNING: Use _PIP_ADDITIONAL_REQUIREMENTS option ONLY for a quick checks
     # for other purpose (development, test and especially production usage) build/extend Airflow image.
     _PIP_ADDITIONAL_REQUIREMENTS: ""
@@ -97,6 +98,7 @@ x-airflow-common: &airflow-common
     - ${AIRFLOW_PROJ_DIR:-.}/output:/opt/airflow/output
     - ${AIRFLOW_PROJ_DIR:-.}/sql:/opt/airflow/sql
     - ${AIRFLOW_PROJ_DIR:-.}/extra:/opt/airflow/extra
+    - ${AIRFLOW_PROJ_DIR:-.}/..:/opt/airflow/hotel-iq
     - ./requirements.txt:/requirements.txt
     - ${AIRFLOW_PROJ_DIR:-.}/config/gcp-service-account.json:/opt/airflow/config/gcp-service-account.json:ro
   user: "${AIRFLOW_UID:-50000}:0"

@@ -11,6 +11,8 @@ GIT_USER_EMAIL="${GIT_USER_EMAIL:-airflow@example.com}"
 GIT_TOKEN="${GIT_TOKEN}" 
 echo "Starting data versioning..."
 
+cd "$REPO_PATH"
+
 echo "Configuring git..."
 git config --global user.name "$GIT_USER_NAME"
 git config --global user.email "$GIT_USER_EMAIL"
@@ -19,7 +21,6 @@ if [ -n "$GIT_TOKEN" ]; then
     git remote set-url origin "https://${GIT_TOKEN}@github.com/Rakshith-Reddy-K/hotel-iq.git"
 fi
 
-cd "$REPO_PATH"
 
 echo "Checking directories..."
 [ ! -d "$REPO_PATH/data/raw" ] && mkdir -p "$REPO_PATH/data_pipeline/data/raw" && echo "Created data_pipeline/data/raw/"

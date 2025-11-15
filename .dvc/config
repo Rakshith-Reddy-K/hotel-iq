@@ -1,0 +1,5 @@
+[core]
+    remote = myremote
+['remote "myremote"']
+    url = gs://hotel_iq_bucket/dvc-storage
+    projectname = hotel-iq

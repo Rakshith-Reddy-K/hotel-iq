@@ -27,11 +27,12 @@ default_args = {
     'owner': 'hotel-iq-team',
     'depends_on_past': False,
     'start_date': datetime(2025, 1, 1),
-    'email_on_failure': False,
-    'email_on_retry': False,
-    'retries': 0,
+    'email': ['rakshithreddy444@gmail.com'],  
+    'email_on_failure': True,
+    'email_on_retry': True,
+    'email_on_success': True,
+    'retries': 1,
     'retry_delay': timedelta(minutes=5),
-    'catchup': False
 }
 
 # DAG definition
@@ -41,6 +42,7 @@ dag = DAG(
     description='Hotel Data pipeline',
     max_active_runs=1,
     schedule_interval=None,
+    catchup=False
 )
 
 def check_filtering_branch(**context):

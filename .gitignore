@@ -213,4 +213,9 @@ intermediate/
 *.DS_Store
 config/
 output/
-data/
+/data/raw/*
+!/data/raw/.dvc
+/data/processed/*
+!/data/processed/.dvc
+/data/processing/*
+!/data/processing/.dvc

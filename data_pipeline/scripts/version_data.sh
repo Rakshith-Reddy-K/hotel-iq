@@ -16,8 +16,7 @@ git config --global user.name "$GIT_USER_NAME"
 git config --global user.email "$GIT_USER_EMAIL"
 
 if [ -n "$GIT_TOKEN" ]; then
-    git config --global credential.helper store
-    echo "https://${GIT_TOKEN}@github.com" > ~/.git-credentials
+    git remote set-url origin "https://${GIT_TOKEN}@github.com/Rakshith-Reddy-K/hotel-iq.git"
 fi
 
 cd "$REPO_PATH"
@@ -41,8 +40,6 @@ dvc push
 echo "Committing to Git..."
 echo "Pulling latest changes..."
 git checkout main
-git fetch origin
-git rebase origin/main
 TIMESTAMP=$(date +"%Y-%m-%d_%H:%M:%S")
 git add data_pipeline/data/raw.dvc data_pipeline/data/processed.dvc
 

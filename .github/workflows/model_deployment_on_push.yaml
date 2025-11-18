@@ -10,6 +10,7 @@ env:
   REGION: ${{ vars.GCP_REGION }}
   SERVICE_NAME: ${{ vars.SERVICE_NAME }}
   ENVIRONMENT: production
+  GAR_REPOSITORY: ${{ vars.GAR_REPOSITORY }}
   REGISTRY: ${{ vars.GCP_REGION }}-docker.pkg.dev
   HOTEL_INDEX_NAME: ${{ vars.HOTEL_INDEX_NAME }}
   REVIEWS_INDEX_NAME: ${{ vars.REVIEWS_INDEX_NAME }}
@@ -90,15 +91,15 @@ jobs:
           file: ./model_pipeline/backend/Dockerfile
           push: true
           tags: |
-            ${{ env.REGISTRY }}/${{ env.PROJECT_ID }}/${{ env.SERVICE_NAME }}-${{ env.ENVIRONMENT }}:${{ steps.tags.outputs.version_tag }}
-            ${{ env.REGISTRY }}/${{ env.PROJECT_ID }}/${{ env.SERVICE_NAME }}-${{ env.ENVIRONMENT }}:latest
+            ${{ env.REGISTRY }}/${{ env.PROJECT_ID }}/${{ env.GAR_REPOSITORY }}/${{ env.SERVICE_NAME }}-${{ env.ENVIRONMENT }}:${{ steps.tags.outputs.version_tag }}
+            ${{ env.REGISTRY }}/${{ env.PROJECT_ID }}/${{ env.GAR_REPOSITORY }}/${{ env.SERVICE_NAME }}-${{ env.ENVIRONMENT }}:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
       - name: Deploy to Cloud Run
         run: |
           gcloud run deploy ${{ env.SERVICE_NAME }}-${{ env.ENVIRONMENT }} \
-            --image=${{ env.REGISTRY }}/${{ env.PROJECT_ID }}/${{ env.SERVICE_NAME }}-${{ env.ENVIRONMENT }}:${{ steps.tags.outputs.version_tag }} \
+            --image=${{ env.REGISTRY }}/${{ env.PROJECT_ID }}/${{ env.GAR_REPOSITORY }}/${{ env.SERVICE_NAME }}-${{ env.ENVIRONMENT }}:${{ steps.tags.outputs.version_tag }} \
             --region=${{ env.REGION }} \
             --project=${{ env.PROJECT_ID }} \
             --platform=managed \

@@ -1,0 +1,138 @@
+name: CD - Deploy to Production
+
+on:
+  push:
+    branches:
+      - production
+
+env:
+  PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+  REGION: ${{ vars.GCP_REGION }}
+  SERVICE_NAME: ${{ vars.SERVICE_NAME }}
+  ENVIRONMENT: production
+  REGISTRY: ${{ vars.GCP_REGION }}-docker.pkg.dev
+  HOTEL_INDEX_NAME: ${{ vars.HOTEL_INDEX_NAME }}
+  REVIEWS_INDEX_NAME: ${{ vars.REVIEWS_INDEX_NAME }}
+  TIMEOUT: 300
+  PORT: 8000
+  CPU: 1
+  MEMORY: 1Gi
+  MAX_INSTANCES: 10
+  MIN_INSTANCES: 1
+  CONCURRENCY: 10
+
+jobs:
+  check-branch-sync:
+    name: Check Branch Synchronization
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check if production is up to date with dev
+        run: |
+          git fetch origin dev:dev
+          BEHIND_COUNT=$(git rev-list --count production..dev)
+
+          if [ "$BEHIND_COUNT" -gt 0 ]; then
+            echo "Production branch is $BEHIND_COUNT commits behind dev branch"
+            echo "Please merge or rebase dev into production first"
+            exit 1
+          fi
+
+          echo "Production branch is up to date with dev"
+
+  build-and-deploy:
+    name: Build and Deploy
+    needs: check-branch-sync
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Configure Docker for GCP
+        run: |
+          gcloud auth configure-docker ${{ env.REGISTRY }}
+
+      - name: Generate version tags
+        id: tags
+        run: |
+          TIMESTAMP=$(date +%Y%m%d-%H%M%S)
+          SHORT_SHA=$(echo ${{ github.sha }} | cut -c1-7)
+          VERSION_TAG="${TIMESTAMP}-${SHORT_SHA}"
+
+          echo "timestamp=${TIMESTAMP}" >> $GITHUB_OUTPUT
+          echo "version_tag=${VERSION_TAG}" >> $GITHUB_OUTPUT
+          echo "short_sha=${SHORT_SHA}" >> $GITHUB_OUTPUT
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./model_pipeline/backend
+          file: ./model_pipeline/backend/Dockerfile
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.PROJECT_ID }}/${{ env.SERVICE_NAME }}-${{ env.ENVIRONMENT }}:${{ steps.tags.outputs.version_tag }}
+            ${{ env.REGISTRY }}/${{ env.PROJECT_ID }}/${{ env.SERVICE_NAME }}-${{ env.ENVIRONMENT }}:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Deploy to Cloud Run
+        run: |
+          gcloud run deploy ${{ env.SERVICE_NAME }}-${{ env.ENVIRONMENT }} \
+            --image=${{ env.REGISTRY }}/${{ env.PROJECT_ID }}/${{ env.SERVICE_NAME }}-${{ env.ENVIRONMENT }}:${{ steps.tags.outputs.version_tag }} \
+            --region=${{ env.REGION }} \
+            --project=${{ env.PROJECT_ID }} \
+            --platform=managed \
+            --allow-unauthenticated \
+            --memory=${{ env.MEMORY }} \
+            --cpu=${{ env.CPU }} \
+            --port=${{ env.PORT }} \
+            --timeout=${{ env.TIMEOUT }} \
+            --min-instances=${{ env.MIN_INSTANCES }} \
+            --max-instances=${{ env.MAX_INSTANCES }} \
+            --concurrency=${{ env.CONCURRENCY }} \
+            --set-env-vars="VERSION=${{ steps.tags.outputs.version_tag }},ENV=${{ env.ENVIRONMENT }},REGION=${{ env.REGION }},SERVICE_NAME=${{ env.SERVICE_NAME }},HOTEL_INDEX_NAME=${{ env.HOTEL_INDEX_NAME }},REVIEWS_INDEX_NAME=${{ env.REVIEWS_INDEX_NAME }}" \
+            --set-secrets="GOOGLE_API_KEY=GOOGLE_API_KEY:latest,OPENAI_API_KEY=OPENAI_API_KEY:latest,PINECONE_API_KEY=PINECONE_API_KEY:latest" \
+            --tag="${{ steps.tags.outputs.short_sha }}" \
+            --quiet
+
+      - name: Get service URL
+        id: service-url
+        run: |
+          URL=$(gcloud run services describe ${{ env.SERVICE_NAME }}-${{ env.ENVIRONMENT }} \
+            --region=${{ env.REGION }} \
+            --format='value(status.url)')
+          echo "url=${URL}" >> $GITHUB_OUTPUT
+          echo "Service deployed to: ${URL}"
+
+      - name: Deployment summary
+        run: |
+          echo "##Deployment Successful" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- **Environment**: ${{ env.ENVIRONMENT }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Service**: ${{ env.SERVICE_NAME }}-${{ env.ENVIRONMENT }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Version**: ${{ steps.tags.outputs.version_tag }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Region**: ${{ env.REGION }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **URL**: ${{ steps.service-url.outputs.url }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Image**: ${{ env.REGISTRY }}/${{ env.PROJECT_ID }}/${{ env.SERVICE_NAME }}-${{ env.ENVIRONMENT }}:${{ steps.tags.outputs.version_tag }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Resources**: ${{ env.MEMORY }} / ${{ env.CPU }} CPU" >> $GITHUB_STEP_SUMMARY
+          echo "- **Instances**: ${{ env.MIN_INSTANCES }}-${{ env.MAX_INSTANCES }}" >> $GITHUB_STEP_SUMMARY

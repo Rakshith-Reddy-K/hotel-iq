@@ -1,0 +1,17 @@
+fastapi
+uvicorn[standard]
+langchain
+langchain-community
+langchain-openai
+langchain-core
+sentence-transformers
+python-dotenv
+langgraph
+pandas
+numpy
+pyyaml
+pinecone[grpc]
+google-cloud-secret-manager>=2.16.0
+google-cloud-storage
+openpyxl
+langchain_huggingface

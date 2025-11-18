@@ -20,66 +20,171 @@ from .config import (
 from .prompt_loader import get_prompts
 
 # ======================================================
-# DATA LOADING
+# LAZY DATA LOADING
 # ======================================================
 
-# ---------- Load hotels ----------
-hotels_df = pd.read_csv(HOTELS_PATH).fillna("")
+# Global variables (initialized on first access)
+_hotels_df = None
+_reviews_df = None
+_df = None
+_hotel_info_retriever = None
+_reviews_retriever = None
+_hotel_info_docs = None
+_review_docs = None
+_initialized = False
 
-possible_name_cols = ["official_name", "hotel_name", "name"]
-name_col = next((c for c in possible_name_cols if c in hotels_df.columns), None)
-if name_col is None:
-    hotels_df["official_name"] = ""
-else:
-    hotels_df["official_name"] = hotels_df[name_col].astype(str)
+def _initialize_data():
+    """
+    Initialize all data and retrievers (called on first access).
+    This allows data files to be downloaded before import.
+    """
+    global _hotels_df, _reviews_df, _df
+    global _hotel_info_retriever, _reviews_retriever
+    global _hotel_info_docs, _review_docs, _initialized
+    
+    if _initialized:
+        return
+    
+    print("📥 Loading data from CSV files...")
+    
+    # ---------- Load hotels ----------
+    _hotels_df = pd.read_csv(HOTELS_PATH).fillna("")
 
-if "hotel_id" not in hotels_df.columns:
-    raise ValueError("Hotels CSV file must contain a 'hotel_id' column.")
+    possible_name_cols = ["official_name", "hotel_name", "name"]
+    name_col = next((c for c in possible_name_cols if c in _hotels_df.columns), None)
+    if name_col is None:
+        _hotels_df["official_name"] = ""
+    else:
+        _hotels_df["official_name"] = _hotels_df[name_col].astype(str)
 
-for col in ["description", "additional_info", "address"]:
-    if col not in hotels_df.columns:
-        hotels_df[col] = ""
+    if "hotel_id" not in _hotels_df.columns:
+        raise ValueError("Hotels CSV file must contain a 'hotel_id' column.")
 
-if "star_rating" not in hotels_df.columns:
-    hotels_df["star_rating"] = ""
+    for col in ["description", "additional_info", "address"]:
+        if col not in _hotels_df.columns:
+            _hotels_df[col] = ""
 
-hotels_df["hotel_info_text"] = (
-    hotels_df["description"].astype(str)
-    + "\n\n"
-    + hotels_df["additional_info"].astype(str)
-    + "\n\nAddress: "
-    + hotels_df["address"].astype(str)
-).str.strip()
+    if "star_rating" not in _hotels_df.columns:
+        _hotels_df["star_rating"] = ""
 
-# ---------- Load & aggregate reviews (optional) ----------
-if REVIEWS_PATH.exists():
-    raw_reviews_df = pd.read_csv(REVIEWS_PATH).fillna("")
-    if "hotel_id" not in raw_reviews_df.columns:
-        raise ValueError("Reviews CSV file must contain 'hotel_id'.")
+    _hotels_df["hotel_info_text"] = (
+        _hotels_df["description"].astype(str)
+        + "\n\n"
+        + _hotels_df["additional_info"].astype(str)
+        + "\n\nAddress: "
+        + _hotels_df["address"].astype(str)
+    ).str.strip()
 
-    text_cols = [c for c in raw_reviews_df.columns if c != "hotel_id"]
-    if not text_cols:
-        raise ValueError("Reviews CSV must have at least one text column besides 'hotel_id'.")
+    # ---------- Load & aggregate reviews (optional) ----------
+    if REVIEWS_PATH.exists():
+        raw_reviews_df = pd.read_csv(REVIEWS_PATH).fillna("")
+        if "hotel_id" not in raw_reviews_df.columns:
+            raise ValueError("Reviews CSV file must contain 'hotel_id'.")
 
-    def row_to_text(row):
-        vals = [str(row[c]) for c in text_cols if str(row[c]).strip()]
-        return " ".join(vals)
+        text_cols = [c for c in raw_reviews_df.columns if c != "hotel_id"]
+        if not text_cols:
+            raise ValueError("Reviews CSV must have at least one text column besides 'hotel_id'.")
 
-    raw_reviews_df["__review_text__"] = raw_reviews_df.apply(row_to_text, axis=1)
-    aggs = raw_reviews_df.groupby("hotel_id")["__review_text__"].apply(
-        lambda x: "\n\n".join(v for v in x if str(v).strip())
-    ).reset_index()
-    aggs = aggs.rename(columns={"__review_text__": "reviews_text"})
-    reviews_df = aggs
-else:
-    print("Reviews CSV file not found; continuing without reviews.")
-    reviews_df = pd.DataFrame(columns=["hotel_id", "reviews_text"])
+        def row_to_text(row):
+            vals = [str(row[c]) for c in text_cols if str(row[c]).strip()]
+            return " ".join(vals)
 
-df = hotels_df.merge(reviews_df, on="hotel_id", how="left")
-df["reviews_text"] = df["reviews_text"].fillna("")
+        raw_reviews_df["__review_text__"] = raw_reviews_df.apply(row_to_text, axis=1)
+        aggs = raw_reviews_df.groupby("hotel_id")["__review_text__"].apply(
+            lambda x: "\n\n".join(v for v in x if str(v).strip())
+        ).reset_index()
+        aggs = aggs.rename(columns={"__review_text__": "reviews_text"})
+        _reviews_df = aggs
+    else:
+        print("Reviews CSV file not found; continuing without reviews.")
+        _reviews_df = pd.DataFrame(columns=["hotel_id", "reviews_text"])
 
-print("✅ Hotels dataframe ready, sample:")
-print(df[["hotel_id", "official_name", "star_rating"]].head())
+    _df = _hotels_df.merge(_reviews_df, on="hotel_id", how="left")
+    _df["reviews_text"] = _df["reviews_text"].fillna("")
+
+    print("✅ Hotels dataframe ready, sample:")
+    print(_df[["hotel_id", "official_name", "star_rating"]].head())
+
+    # ---------- Build documents ----------
+    _hotel_info_docs = []
+    _review_docs = []
+
+    for _, row in _df.iterrows():
+        meta = {
+            "hotel_id": str(row["hotel_id"]),
+            "name": str(row["official_name"]),
+            "star_rating": str(row["star_rating"]),
+        }
+
+        info_text = str(row["hotel_info_text"]).strip()
+        if info_text:
+            _hotel_info_docs.append(
+                Document(
+                    page_content=info_text,
+                    metadata={**meta, "source": "hotel_info"},
+                )
+            )
+
+        reviews_text = str(row["reviews_text"]).strip()
+        if reviews_text:
+            _review_docs.append(
+                Document(
+                    page_content=reviews_text,
+                    metadata={**meta, "source": "review"},
+                )
+            )
+
+    print(
+        f"Prepared {len(_hotel_info_docs)} hotel info docs and "
+        f"{len(_review_docs)} review docs."
+    )
+
+    # ---------- Build retrievers ----------
+    _hotel_info_retriever = SimpleInMemoryRetriever(_hotel_info_docs, embeddings, k=8)
+    _reviews_retriever = (
+        SimpleInMemoryRetriever(_review_docs, embeddings, k=8)
+        if _review_docs
+        else None
+    )
+
+    print("✅ SimpleInMemoryRetriever ready.")
+    
+    _initialized = True
+
+
+# Getter functions
+def get_hotels_df():
+    """Get hotels dataframe (loads data on first access)."""
+    _initialize_data()
+    return _hotels_df
+
+def get_df():
+    """Get merged dataframe (loads data on first access)."""
+    _initialize_data()
+    return _df
+
+def get_hotel_info_retriever():
+    """Get hotel info retriever (loads data on first access)."""
+    _initialize_data()
+    return _hotel_info_retriever
+
+def get_reviews_retriever():
+    """Get reviews retriever (loads data on first access)."""
+    _initialize_data()
+    return _reviews_retriever
+
+# Backward compatibility - module-level variables that trigger lazy loading
+def __getattr__(name):
+    """Module-level attribute access that triggers lazy loading."""
+    if name == "hotels_df":
+        return get_hotels_df()
+    elif name == "df":
+        return get_df()
+    elif name == "hotel_info_retriever":
+        return get_hotel_info_retriever()
+    elif name == "reviews_retriever":
+        return get_reviews_retriever()
+    raise AttributeError(f"module '{__name__}' has no attribute '{name}'")
 
 # ======================================================
 # SIMPLE IN-MEMORY RETRIEVER
@@ -111,50 +216,6 @@ class SimpleInMemoryRetriever:
         k = min(self.k, len(self.docs))
         idxs = np.argsort(scores)[::-1][:k]
         return [self.docs[i] for i in idxs]
-
-
-# Build docs
-hotel_info_docs: List[Document] = []
-review_docs: List[Document] = []
-
-for _, row in df.iterrows():
-    meta = {
-        "hotel_id": str(row["hotel_id"]),
-        "name": str(row["official_name"]),
-        "star_rating": str(row["star_rating"]),
-    }
-
-    info_text = str(row["hotel_info_text"]).strip()
-    if info_text:
-        hotel_info_docs.append(
-            Document(
-                page_content=info_text,
-                metadata={**meta, "source": "hotel_info"},
-            )
-        )
-
-    reviews_text = str(row["reviews_text"]).strip()
-    if reviews_text:
-        review_docs.append(
-            Document(
-                page_content=reviews_text,
-                metadata={**meta, "source": "review"},
-            )
-        )
-
-print(
-    f"Prepared {len(hotel_info_docs)} hotel info docs and "
-    f"{len(review_docs)} review docs."
-)
-
-hotel_info_retriever = SimpleInMemoryRetriever(hotel_info_docs, embeddings, k=8)
-reviews_retriever = (
-    SimpleInMemoryRetriever(review_docs, embeddings, k=8)
-    if review_docs
-    else None
-)
-
-print("✅ SimpleInMemoryRetriever ready.")
 
 # ======================================================
 # MEMORY & HISTORY
@@ -290,11 +351,13 @@ def pick_hotel_for_booking(user_message: str, thread_id: str) -> Optional[Dict[s
     1) Match hotel name from text
     2) If they say 'first one' / 'second one', use last_suggestions[thread_id]
     """
+    # Use lazy-loaded df
+    current_df = get_df()
     text = user_message.lower()
 
     # 1) Try name match
     best_match = None
-    for _, row in df.iterrows():
+    for _, row in current_df.iterrows():
         name = str(row["official_name"])
         if not name.strip():
             continue
@@ -346,4 +409,3 @@ def _get_comparison_prompt():
 # Initialize the comparison chain with prompt from YAML
 comparison_prompt = _get_comparison_prompt()
 comparison_chain = comparison_prompt | llm | StrOutputParser()
-

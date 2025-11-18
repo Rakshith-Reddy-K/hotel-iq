@@ -12,18 +12,9 @@ from pathlib import Path
 from typing import List, Optional
 from dataclasses import dataclass
 
-from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
-from agents import agent_graph
-from agents.state import HotelIQState
-import bucket_util
-import path as path_util
-
-# Setup logging
+# Setup logging FIRST
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
@@ -41,8 +32,11 @@ if not os.getenv('GOOGLE_APPLICATION_CREDENTIALS'):
         logger.warning(f"⚠️ GCP credentials file not found at: {credentials_path}")
 
 # ======================================================
-# DATA INITIALIZATION
+# DATA INITIALIZATION - BEFORE IMPORTING AGENTS!
 # ======================================================
+
+import bucket_util
+import path as path_util
 
 def check_data_files_exist(city: str) -> dict:
     """
@@ -127,6 +121,26 @@ def download_processed_data():
     
     return success_count == len(files_to_download)
 
+
+# Download data BEFORE importing agents
+logger.info("📥 Downloading data files before importing agents...")
+try:
+    download_processed_data()
+    logger.info("✅ Data files ready, now importing agents...")
+except Exception as e:
+    logger.warning(f"⚠️ Data download failed: {e}")
+    logger.info("Continuing with agent import (may fail if data is required)...")
+
+# NOW import agents (after data is downloaded)
+from agents import agent_graph
+from agents.state import HotelIQState
+
+# Import FastAPI components
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
+
 # ======================================================
 # FASTAPI APP SETUP
 # ======================================================
@@ -136,15 +150,59 @@ FRONTEND_DIR = BASE_DIR / "frontend"
 
 app = FastAPI(title="HotelIQ Comparison API")
 
-# Add startup event to download data
+# ======================================================
+# HEALTH CHECK ENDPOINTS
+# ======================================================
+
+@app.get("/")
+async def root():
+    """Root endpoint."""
+    return {
+        "message": "HotelIQ API is running",
+        "status": "ok",
+        "service": "hoteliq-backend",
+        "version": "1.0.0"
+    }
+
+@app.get("/health")
+async def health_check():
+    """Health check endpoint for Docker and Cloud Run."""
+    return {
+        "status": "healthy",
+        "service": "hoteliq-backend",
+        "version": "1.0.0"
+    }
+
+@app.get("/health/ready")
+async def readiness_check():
+    """
+    Readiness check - verifies app is ready to serve traffic.
+    Checks if data files are available.
+    """
+    city = os.getenv('CITY', 'boston')
+    files_status = check_data_files_exist(city)
+    all_ready = all(files_status.values())
+    
+    return {
+        "status": "ready" if all_ready else "not_ready",
+        "service": "hoteliq-backend",
+        "data_files": files_status,
+        "city": city
+    }
+
+# ======================================================
+# STARTUP EVENT
+# ======================================================
+
 @app.on_event("startup")
 async def startup_event():
     """Execute on application startup."""
-    logger.info("🚀 Starting HotelIQ API...")
-    download_processed_data()
-    logger.info("✅ Startup complete!")
+    logger.info("🚀 HotelIQ API startup complete!")
 
-# CORS configuration
+# ======================================================
+# CORS CONFIGURATION
+# ======================================================
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -153,18 +211,25 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# ======================================================
+# SERVE FRONTEND (if available)
+# ======================================================
+
 # Serve frontend static files
 if FRONTEND_DIR.exists():
     app.mount("/static", StaticFiles(directory=str(FRONTEND_DIR)), name="static")
+    logger.info(f"✅ Frontend mounted from: {FRONTEND_DIR}")
 else:
-    print(f"⚠️ Frontend directory not found: {FRONTEND_DIR}")
+    logger.warning(f"⚠️ Frontend directory not found: {FRONTEND_DIR}")
 
 # Route to return chat.html UI
 @app.get("/chat")
 async def chat_page():
     """Serve the chat interface HTML page."""
-    return FileResponse(FRONTEND_DIR / "chat.html")
-
+    chat_html = FRONTEND_DIR / "chat.html"
+    if chat_html.exists():
+        return FileResponse(chat_html)
+    return {"error": "Chat page not found"}
 
 # ======================================================
 # CHAT SERVICE
@@ -218,9 +283,9 @@ class ChatService:
                 previous_messages = previous_state.values.get("messages", [])
                 if previous_messages:
                     messages = previous_messages.copy()
-                    print(f"📜 Retrieved {len(messages)} previous messages for thread {thread_id}")
+                    logger.info(f"📜 Retrieved {len(messages)} previous messages for thread {thread_id}")
         except Exception as e:
-            print(f"⚠️ Could not retrieve previous state: {e}")
+            logger.warning(f"⚠️ Could not retrieve previous state: {e}")
         
         # Append new user message
         messages.append({"role": "user", "content": message})
@@ -258,8 +323,7 @@ class ChatService:
 
 # Initialize chat service
 chat_service = ChatService(agent_graph)
-print("✅ ChatService ready.")
-
+logger.info("✅ ChatService ready.")
 
 # ======================================================
 # API ROUTES
@@ -301,8 +365,7 @@ async def send_message(request: ChatRequest):
     )
 
 
-print("✅ FastAPI app created.")
-
+logger.info("✅ FastAPI app created and ready.")
 
 # ======================================================
 # LOCAL RUN ENTRYPOINT
@@ -314,8 +377,8 @@ if __name__ == "__main__":
     
     Preferred method:
         cd backend
-        uvicorn main:app --reload --port 8001
+        uvicorn main:app --reload --port 8000
     """
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8001)
-
+    port = int(os.environ.get("PORT", 8000)) 
+    uvicorn.run(app, host="0.0.0.0", port=port)

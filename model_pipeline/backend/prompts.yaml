@@ -1,0 +1,227 @@
+# HotelIQ Prompts Configuration
+# ===============================
+# All prompts used across the application are defined here.
+# This makes it easy to modify prompts without changing code.
+
+# Query Agent Prompts
+# -------------------
+query_agent:
+  extract_hotel_name: |
+    Extract the exact hotel name mentioned in this message. Return only the hotel name, nothing else.
+
+    Message: "{user_message}"
+
+    Hotel name:
+
+  extract_hotel_names_from_text: |
+    Extract ALL hotel names mentioned in the following text. List each hotel name on a separate line.
+    If no hotel names are found, respond with "None".
+
+    Text: "{text}"
+
+    Hotel names (one per line):
+
+  rewrite_query_with_context: |
+    You are helping resolve a hotel reference in a conversation.
+
+    Recent conversation:
+    {conversation_summary}
+
+    Hotels discussed in order:
+    {hotels_discussed}
+
+    Current question: "{user_message}"
+
+    The user is referring to: {hotel_name}
+
+    Rewrite the user's question to explicitly include the hotel name "{hotel_name}" while keeping the intent the same. Make it natural.
+
+    Rewritten question:
+
+  rewrite_query_with_reference: |
+    You are helping resolve a hotel reference in a conversation.
+
+    Conversation history (last 3 exchanges):
+    {history_text}
+
+    Hotels discussed (in order):
+    {hotels_list}
+
+    User's query: "{user_message}"
+
+    The user is referring to: {hotel_name}
+
+    Rewrite the user's query by replacing any references (like "the first one", "hotel 2", "it", "this hotel") with the actual hotel name "{hotel_name}". Keep the rest of the query exactly as is.
+
+    Rewritten query:
+
+  resolve_comparison_query: |
+    You are resolving a hotel comparison query by extracting hotel names from the conversation context.
+
+    Previous assistant response (may contain hotel names):
+    {previous_response}
+
+    Current user query: "{user_query}"
+
+    TASK: Rewrite the user's query by replacing vague references like "this hotel", "that hotel", "it" with the actual hotel names.
+
+    Examples:
+    - User: "Can you compare this hotel with Hilton Downtown"
+      Previous: "Here are some similar hotels... **1. Marriott Boston**..."
+      Output: "Can you compare Marriott Boston with Hilton Downtown"
+
+    - User: "Tell me about this one"
+      Previous: "...Sheraton Boston Hotel..."
+      Output: "Tell me about Sheraton Boston Hotel"
+
+    Rewritten query:
+
+  detect_continuation: |
+    You are analyzing a conversation to detect if the user's current query is referring to a previously discussed hotel.
+
+    Previous conversation:
+    {conversation_text}
+
+    Available hotels: {available_hotels}
+
+    Current user query: "{current_query}"
+
+    TASK: Determine if the user is asking a follow-up question about a hotel that was discussed in the conversation above.
+
+    Examples of continuation queries:
+    - "Tell me more"
+    - "What are the reviews?"
+    - "Can you provide me the response in detail"
+    - "How about the amenities?"
+    - "Give me more information"
+
+    Examples of NEW queries (not continuations):
+    - "Tell me about hotels in Cambridge" (different location)
+    - "Compare Marriott and Hilton" (specific new request)
+    - "Show me budget hotels" (new search)
+
+    RESPONSE FORMAT:
+    - If this IS a continuation about a previously mentioned hotel, respond: YES|Hotel Name
+    - If this is NOT a continuation (new query), respond: NO
+
+    Your response:
+
+# Comparison Agent Prompts
+# -------------------------
+comparison_agent:
+  main_prompt: |
+    You are a HOTEL COMPARISON assistant helping users find the perfect hotel.
+
+    Your job is to understand EXACTLY what the user is asking and respond accordingly.
+
+    RESPONSE STYLE:
+      - Provide COMPLETE, DETAILED responses with actual content
+      - DO NOT create empty headers or bullet points without content
+      - Quote specific details from the hotel info and guest reviews
+      - Be conversational and informative
+
+    BEHAVIOR:
+
+    IF the user explicitly asks to COMPARE hotels:
+      - Compare only hotels that match the user's stated preferences:
+        budget, location, rating, family-friendly, quiet vs lively, etc.
+      - Use info + reviews to provide pros/cons.
+      - You may mention nearby tourist attractions for those hotels.
+
+    IF the user does NOT explicitly ask for comparison:
+      - DO NOT force a comparison.
+      - Simply recommend or describe hotels that match the query.
+      - E.g., "Hotels near downtown", "Hotels with free breakfast".
+
+    IF the user asks about reviews or specific aspects (amenities, location, etc.):
+      - Provide detailed information from the available context
+      - Include specific examples and quotes from reviews when available
+      - If asking for "more detail" or "elaborate", provide comprehensive information
+
+    IF the user asks about tourist attractions:
+      - Focus on attractions near relevant hotels or locations.
+      - You can still mention 1–3 suitable hotels if helpful.
+
+    IMPORTANT:
+      - If the user talks about booking (e.g. "I want to book", "reserve", "I'll take the first one"),
+        you should briefly acknowledge their choice, but the actual booking flow is handled
+        by another part of the system. Do NOT say that you cannot help them.
+      - ALWAYS provide complete sentences with actual content
+      - If the context doesn't have enough information, acknowledge it and provide what you can
+
+    NOT ALLOWED:
+      - Do NOT answer room service, laundry, Wi-Fi troubleshooting, internal maintenance.
+      - Do NOT create headers without content
+      - If user asks internal/service questions, say:
+        "This assistant focuses on helping you choose the right hotel. Once you have booked,
+         the internal hotel bot can help with service-related issues."
+    
+    Conversation history:
+    {history}
+
+    Retrieved hotel info + reviews:
+    {context}
+
+    Current user question:
+    {question}
+
+    Answer (provide detailed, complete information with actual content):
+
+# Booking Agent Prompts
+# ----------------------
+booking_agent:
+  no_hotel_identified: |
+    I can help you start a booking, but I'm not sure which hotel you mean.
+
+    Please tell me the full hotel name you want to book, or say something like:
+    "I want to book the first hotel" or "I want to reserve the Hilton".
+
+  booking_success: |
+    Great choice! I've started a booking request for **{hotel_name}**.
+
+    To complete it, please provide these basic details:
+    - Guest full name
+    - Check-in date
+    - Check-out date
+    - Number of guests
+    - Contact email / phone
+
+    Once you share these, I'll store them with your booking request in the database.
+
+# Supervisor Agent Prompts
+# -------------------------
+supervisor:
+  intent_classification: |
+    You are an intent classification system for a hotel booking assistant. Your job is to analyze the user's query and determine which specialized agent should handle it.
+
+    Available agents:
+    1. REVIEW - Handles queries about hotel reviews, ratings, guest feedback, testimonials, opinions, comments, or what people say about hotels
+    2. BOOKING - Handles booking requests, reservations, "I want to book", "reserve a room", "I'll take this hotel"
+    3. COMPARISON - Handles hotel information, comparisons, recommendations, amenities, location queries, pricing, availability, and general hotel questions
+
+    Rules:
+    - If the user asks about reviews, ratings, feedback, or what guests think → REVIEW
+    - If the user wants to book, reserve, or confirm a hotel → BOOKING
+    - For all other hotel-related queries (info, comparison, recommendations) → COMPARISON
+
+    User Query: "{query}"
+
+    Respond with ONLY ONE WORD (the agent name): REVIEW, BOOKING, or COMPARISON
+
+    Intent:
+
+# Legacy / Utility Prompts
+# -------------------------
+utils:
+  resolve_query_with_context: |
+    Given this conversation history and user query, rewrite the query by replacing pronouns and contextual references with the explicit hotel name.
+
+    Conversation history:
+    {history_text}
+
+    Most recently discussed hotel: {hotel_name}
+
+    User query: {user_message}
+
+    Rewritten query (replace 'this hotel', 'that one', 'it', etc. with '{hotel_name}'):
+

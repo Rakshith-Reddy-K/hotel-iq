@@ -11,6 +11,8 @@ env:
   SERVICE_NAME: ${{ vars.SERVICE_NAME }}
   ENVIRONMENT: production
   REGISTRY: ${{ vars.GCP_REGION }}-docker.pkg.dev
+  HOTEL_INDEX_NAME: ${{ vars.HOTEL_INDEX_NAME }}
+  REVIEWS_INDEX_NAME: ${{ vars.REVIEWS_INDEX_NAME }}
   TIMEOUT: 300
   PORT: 8000
   CPU: 1
@@ -108,7 +110,7 @@ jobs:
             --min-instances=${{ env.MIN_INSTANCES }} \
             --max-instances=${{ env.MAX_INSTANCES }} \
             --concurrency=${{ env.CONCURRENCY }} \
-            --set-env-vars="VERSION=${{ steps.tags.outputs.version_tag }},ENV=${{ env.ENVIRONMENT }},REGION=${{ env.REGION }},SERVICE_NAME=${{ env.SERVICE_NAME }}" \
+            --set-env-vars="VERSION=${{ steps.tags.outputs.version_tag }},ENV=${{ env.ENVIRONMENT }},REGION=${{ env.REGION }},SERVICE_NAME=${{ env.SERVICE_NAME }},HOTEL_INDEX_NAME=${{ env.HOTEL_INDEX_NAME }},REVIEWS_INDEX_NAME=${{ env.REVIEWS_INDEX_NAME }}" \
             --set-secrets="GOOGLE_API_KEY=GOOGLE_API_KEY:latest,OPENAI_API_KEY=OPENAI_API_KEY:latest,PINECONE_API_KEY=PINECONE_API_KEY:latest" \
             --tag="${{ steps.tags.outputs.short_sha }}" \
             --quiet

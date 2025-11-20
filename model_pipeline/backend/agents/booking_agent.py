@@ -16,15 +16,18 @@ from .prompt_loader import get_prompts
 def booking_node(state: HotelIQState) -> HotelIQState:
     """
     Booking Agent: Handles hotel booking/reservation intent.
-    
-    Features:
-    - Uses hotel_id from state for direct booking
-    - Creates booking records with full hotel context
-    - Provides next steps for booking completion
     """
     thread_id = state.get("thread_id", "unknown_thread")
     hotel_id = state.get("hotel_id", "")
     user_message = state["messages"][-1]["content"]
+    
+    # Track agent execution
+    from langfuse.decorators import langfuse_context
+    langfuse_context.update_current_observation(
+        name="booking_agent",
+        input={"query": user_message, "hotel_id": hotel_id},
+        metadata={"agent": "booking_agent", "thread_id": thread_id}
+    )
     
     print(f"📝 Booking Agent processing for hotel_id: {hotel_id}")
     
@@ -74,6 +77,11 @@ def booking_node(state: HotelIQState) -> HotelIQState:
     history_obj.add_user_message(user_message)
     history_obj.add_ai_message(answer)
 
+    # Track output
+    langfuse_context.update_current_observation(
+        output={"response": answer, "booking_created": bool(hotel_id)}
+    )
+    
     state["route"] = "end"
     return state
 

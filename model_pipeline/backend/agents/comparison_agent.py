@@ -101,19 +101,18 @@ def format_similar_hotels_response(similar_hotels: List[Document]) -> str:
 def comparison_node(state: HotelIQState) -> HotelIQState:
     """
     Comparison Agent: Handles hotel information retrieval and similar hotel search.
-    
-    Features:
-    - Works with specific hotel_id from state
-    - Handles general information queries about the hotel
-    - Finds similar hotels when requested
-    - Provides formatted responses with hotel links
     """
     thread_id = state.get("thread_id", "unknown_thread")
     hotel_id = state.get("hotel_id", "")
-    history_obj = get_history(f"compare_{thread_id}")
-    history_text = get_limited_history_text(history_obj)
-
     user_message = state["messages"][-1]["content"]
+    
+    # Track agent execution
+    from langfuse.decorators import langfuse_context
+    langfuse_context.update_current_observation(
+        name="comparison_agent",
+        input={"query": user_message, "hotel_id": hotel_id},
+        metadata={"agent": "comparison_agent", "thread_id": thread_id}
+    )
     
     print(f"🔍 Comparison Agent processing query for hotel_id: {hotel_id}")
     
@@ -143,9 +142,7 @@ def comparison_node(state: HotelIQState) -> HotelIQState:
             hotel_info = state.get("metadata", {}).get("hotel_info")
             hotel_name = state.get("metadata", {}).get("hotel_name", "this hotel")
             
-            if not hotel_info:
-                answer = f"I don't have information about {hotel_name}. Please try again."
-            else:
+            if hotel_info:
                 # Build context from CSV data
                 context_parts = []
                 
@@ -173,15 +170,35 @@ def comparison_node(state: HotelIQState) -> HotelIQState:
                 print(f"📊 Using CSV data for hotel_id {hotel_id}")
                 
                 # Generate response using LLM with CSV context
-                answer = comparison_chain.invoke(
+                # Track LLM call
+                from ..utils.langfuse_tracker import track_llm_call
+                
+                llm_response = comparison_chain.invoke(
                     {"history": history_text, "context": context_text, "question": user_message}
                 )
+                
+                track_llm_call(
+                    prompt=f"Context: {context_text[:500]}\nQuestion: {user_message}",
+                    model="claude-sonnet-3-5",
+                    response=llm_response,
+                    usage={
+                        "prompt_tokens": len(context_text.split()) // 0.75 + len(user_message.split()) // 0.75,
+                        "completion_tokens": len(str(llm_response).split()) // 0.75,
+                        "total_tokens": (len(context_text.split()) + len(user_message.split()) + len(str(llm_response).split())) // 0.75
+                    },
+                    metadata={"agent": "comparison_agent", "purpose": "hotel_info"}
+                )
+                
+                answer = llm_response
         except Exception as e:
-            print(f"⚠️ Error retrieving hotel information: {e}")
-            import traceback
-            traceback.print_exc()
-            answer = "I apologize, but I encountered an error while retrieving hotel information. Please try again."
-
+            print(f"⚠️ Error: {e}")
+            answer = "I apologize, but I encountered an error. Please try again."
+    
+    # Track output
+    langfuse_context.update_current_observation(
+        output={"response": answer[:500]}
+    )
+    
     # Update state and history
     msgs = state.get("messages", [])
     msgs.append({"role": "assistant", "content": answer})

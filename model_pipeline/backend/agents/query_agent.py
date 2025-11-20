@@ -14,6 +14,7 @@ from .state import HotelIQState
 from .config import llm, last_suggestions, conversation_context
 from .utils import get_history, get_limited_history_text
 from .prompt_loader import get_prompts
+from ..utils.langfuse_tracker import track_agent, track_llm_call
 
 
 def extract_first_n_words(text: str, n: int = 60) -> str:
@@ -156,19 +157,20 @@ def get_hotel_info_by_id(hotel_id: str) -> Optional[Dict[str, Any]]:
 def metadata_agent_node(state: HotelIQState) -> HotelIQState:
     """
     Metadata Agent: Manages hotel context and resolves queries with hotel information.
-    
-    This agent:
-    1. Retrieves hotel information using the provided hotel_id
-    2. Maintains conversation context for the specific hotel
-    3. Tracks conversation history
-    4. Enriches queries with hotel context
-    5. Passes the enriched query to downstream agents
     """
     thread_id = state.get("thread_id", "unknown_thread")
     hotel_id = state.get("hotel_id", "")
     user_message = state["messages"][-1]["content"]
     
     print(f"🏨 Metadata Agent processing query for hotel_id: {hotel_id}")
+    
+    # Track this agent execution
+    from langfuse.decorators import langfuse_context
+    langfuse_context.update_current_observation(
+        name="query_agent",
+        input={"query": user_message, "hotel_id": hotel_id},
+        metadata={"agent": "query_agent", "thread_id": thread_id}
+    )
     
     # Initialize conversation context for this thread if not present
     if thread_id not in conversation_context:
@@ -253,24 +255,37 @@ def metadata_agent_node(state: HotelIQState) -> HotelIQState:
     # If user has contextual references AND previous assistant response exists
     if has_contextual_reference and previous_assistant_response:
         print(f"🔍 Detected contextual reference in query, analyzing previous response...")
-        
-        # Extract hotels from previous assistant response
         assistant_hotels = extract_hotels_from_text(previous_assistant_response, use_llm=True)
         
         if assistant_hotels:
             print(f"🏨 Hotels found in previous response: {assistant_hotels}")
             print(f"🏨 Hotels mentioned by user: {user_mentioned_hotels}")
             
-            # Use LLM to intelligently resolve the query
             prompts = get_prompts()
             prompt = prompts.format(
                 "query_agent.resolve_comparison_query",
-                previous_response=previous_assistant_response[:500],  # Limit to first 500 chars
+                previous_response=previous_assistant_response[:500],
                 user_query=user_message
             )
             
             try:
-                resolved_query = llm.invoke(prompt).content.strip()
+                # Track LLM call
+                llm_response = llm.invoke(prompt)
+                resolved_query = llm_response.content.strip()
+                
+                # Track token usage
+                track_llm_call(
+                    prompt=prompt,
+                    model="claude-sonnet-3-5",  # Update with your actual model
+                    response=resolved_query,
+                    usage={
+                        "prompt_tokens": getattr(llm_response, 'usage', {}).get('input_tokens', 0) if hasattr(llm_response, 'usage') else 0,
+                        "completion_tokens": getattr(llm_response, 'usage', {}).get('output_tokens', 0) if hasattr(llm_response, 'usage') else 0,
+                        "total_tokens": getattr(llm_response, 'usage', {}).get('total_tokens', 0) if hasattr(llm_response, 'usage') else 0
+                    },
+                    metadata={"agent": "query_agent", "purpose": "resolve_comparison_query"}
+                )
+                
                 resolved_query = resolved_query.strip('"\'')
                 print(f"✅ Resolved query: '{user_message}' → '{resolved_query}'")
             except Exception as e:
@@ -453,4 +468,26 @@ def resolve_hotel_reference(user_message: str, suggestions: List[Dict[str, str]]
     
     # No reference found, return original
     return user_message, None
+
+
+@track_agent("query_agent")
+def process_query(query: str, **kwargs):
+    # When making LLM call, wrap it:
+    # response = llm.generate(prompt)
+    
+    # Track the LLM call
+    response = track_llm_call(
+        prompt=prompt,
+        model=kwargs.get('model', 'gpt-4'),  # or your model name
+        response=llm_response,
+        usage={
+            "prompt_tokens": llm_response.usage.prompt_tokens if hasattr(llm_response, 'usage') else 0,
+            "completion_tokens": llm_response.usage.completion_tokens if hasattr(llm_response, 'usage') else 0,
+            "total_tokens": llm_response.usage.total_tokens if hasattr(llm_response, 'usage') else 0
+        },
+        metadata={"agent": "query_agent"}
+    )
+    
+    # ...existing code...
+    return response
 

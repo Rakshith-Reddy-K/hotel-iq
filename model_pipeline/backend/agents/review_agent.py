@@ -116,55 +116,95 @@ def generate_review_summary(reviews: List[Document], query: str, history_text: s
 def review_node(state: HotelIQState) -> HotelIQState:
     """
     Review Agent: Handles review-specific queries for a hotel.
-    
-    Features:
-    - Filters reviews by hotel_id
-    - Shows 2-3 recent reviews on request
-    - Generates review summaries on request
-    - Answers specific questions about reviews
     """
     thread_id = state.get("thread_id", "unknown_thread")
     hotel_id = state.get("hotel_id", "")
     user_message = state["messages"][-1]["content"]
+    
+    # Track agent execution
+    from langfuse.decorators import langfuse_context
+    langfuse_context.update_current_observation(
+        name="review_agent",
+        input={"query": user_message, "hotel_id": hotel_id},
+        metadata={"agent": "review_agent", "thread_id": thread_id}
+    )
     
     history_obj = get_history(f"compare_{thread_id}")
     history_text = get_limited_history_text(history_obj)
     
     print(f"🔍 Review Agent processing query for hotel_id: {hotel_id}")
     
-    # Retrieve reviews from Pinecone
     try:
-        # Determine what the user wants
-        if detect_recent_reviews_intent(user_message):
-            # Get recent reviews for this hotel
-            hotel_reviews = get_reviews_by_hotel_id(hotel_id, top_k=20)
-            print(f"📊 Found {len(hotel_reviews)} reviews for hotel_id {hotel_id}")
+        # Retrieve reviews from Pinecone
+        try:
+            # Determine what the user wants
+            if detect_recent_reviews_intent(user_message):
+                # Get recent reviews for this hotel
+                hotel_reviews = get_reviews_by_hotel_id(hotel_id, top_k=20)
+                print(f"📊 Found {len(hotel_reviews)} reviews for hotel_id {hotel_id}")
+                
+                # Show recent reviews
+                answer = format_recent_reviews(hotel_reviews, limit=3)
+                
+            elif detect_review_summary_intent(user_message):
+                # Get all reviews for summary
+                hotel_reviews = get_reviews_by_hotel_id(hotel_id, top_k=50)
+                print(f"📊 Found {len(hotel_reviews)} reviews for hotel_id {hotel_id}")
+                
+                # Generate summary
+                answer = generate_review_summary(hotel_reviews, user_message, history_text)
+            else:
+                # General review query - use semantic search
+                hotel_reviews = retrieve_reviews_by_query(
+                    query=user_message,
+                    hotel_id=hotel_id,
+                    top_k=20
+                )
+                print(f"📊 Found {len(hotel_reviews)} relevant reviews for hotel_id {hotel_id}")
+                
+                # Generate answer based on reviews
+                answer = generate_review_summary(hotel_reviews, user_message, history_text)
             
-            # Show recent reviews
-            answer = format_recent_reviews(hotel_reviews, limit=3)
-            
-        elif detect_review_summary_intent(user_message):
-            # Get all reviews for summary
-            hotel_reviews = get_reviews_by_hotel_id(hotel_id, top_k=50)
-            print(f"📊 Found {len(hotel_reviews)} reviews for hotel_id {hotel_id}")
-            
-            # Generate summary
-            answer = generate_review_summary(hotel_reviews, user_message, history_text)
-        else:
-            # General review query - use semantic search
-            hotel_reviews = retrieve_reviews_by_query(
-                query=user_message,
-                hotel_id=hotel_id,
-                top_k=20
-            )
-            print(f"📊 Found {len(hotel_reviews)} relevant reviews for hotel_id {hotel_id}")
-            
-            # Generate answer based on reviews
-            answer = generate_review_summary(hotel_reviews, user_message, history_text)
+        except Exception as e:
+            print(f"⚠️ Error retrieving reviews: {e}")
+            answer = "I apologize, but I encountered an error while retrieving reviews. Please try again."
         
+        # Generate answer - track LLM call
+        from .utils import comparison_chain
+        from ..utils.langfuse_tracker import track_llm_call
+        
+        summary_prompt = f"Based on the following hotel reviews, {user_message}\n\nReviews:\n{context}"
+        
+        # Make LLM call
+        llm_response = comparison_chain.invoke({
+            "history": history_text,
+            "context": context,
+            "question": user_message
+        })
+        
+        # Track it
+        track_llm_call(
+            prompt=summary_prompt[:1000],  # Truncate for storage
+            model="claude-sonnet-3-5",
+            response=llm_response,
+            usage={
+                "prompt_tokens": len(summary_prompt.split()) // 0.75,  # Approximate
+                "completion_tokens": len(str(llm_response).split()) // 0.75,
+                "total_tokens": (len(summary_prompt.split()) + len(str(llm_response).split())) // 0.75
+            },
+            metadata={"agent": "review_agent", "purpose": "review_summary"}
+        )
+        
+        answer = llm_response
+    
     except Exception as e:
         print(f"⚠️ Error retrieving reviews: {e}")
         answer = "I apologize, but I encountered an error while retrieving reviews. Please try again."
+    
+    # Track output
+    langfuse_context.update_current_observation(
+        output={"response": answer[:500]}  # Truncate long responses
+    )
     
     # Update state and history
     msgs = state.get("messages", [])

@@ -15,6 +15,8 @@ from .utils import (
     comparison_chain, get_history, get_limited_history_text,
     build_context_text, detect_comparison_intent, resolve_query_with_context
 )
+from .langfuse_tracker import track_llm_call
+from langfuse.decorators import langfuse_context
 
 
 def detect_similar_hotel_intent(query: str) -> bool:
@@ -107,7 +109,6 @@ def comparison_node(state: HotelIQState) -> HotelIQState:
     user_message = state["messages"][-1]["content"]
     
     # Track agent execution
-    from langfuse.decorators import langfuse_context
     langfuse_context.update_current_observation(
         name="comparison_agent",
         input={"query": user_message, "hotel_id": hotel_id},
@@ -171,8 +172,6 @@ def comparison_node(state: HotelIQState) -> HotelIQState:
                 
                 # Generate response using LLM with CSV context
                 # Track LLM call
-                from ..utils.langfuse_tracker import track_llm_call
-                
                 llm_response = comparison_chain.invoke(
                     {"history": history_text, "context": context_text, "question": user_message}
                 )

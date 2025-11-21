@@ -14,7 +14,8 @@ from .state import HotelIQState
 from .config import llm, last_suggestions, conversation_context
 from .utils import get_history, get_limited_history_text
 from .prompt_loader import get_prompts
-from ..utils.langfuse_tracker import track_agent, track_llm_call
+from .langfuse_tracker import track_agent, track_llm_call
+from langfuse.decorators import langfuse_context
 
 
 def extract_first_n_words(text: str, n: int = 60) -> str:
@@ -165,7 +166,6 @@ def metadata_agent_node(state: HotelIQState) -> HotelIQState:
     print(f"🏨 Metadata Agent processing query for hotel_id: {hotel_id}")
     
     # Track this agent execution
-    from langfuse.decorators import langfuse_context
     langfuse_context.update_current_observation(
         name="query_agent",
         input={"query": user_message, "hotel_id": hotel_id},

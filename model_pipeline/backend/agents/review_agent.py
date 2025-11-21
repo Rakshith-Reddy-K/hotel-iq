@@ -12,6 +12,8 @@ from .state import HotelIQState
 from .pinecone_retrieval import retrieve_reviews_by_query, get_reviews_by_hotel_id
 from .utils import get_history, get_limited_history_text
 from .prompt_loader import get_prompts
+from .langfuse_tracker import track_llm_call
+from langfuse.decorators import langfuse_context
 
 
 def detect_review_summary_intent(query: str) -> bool:
@@ -122,7 +124,6 @@ def review_node(state: HotelIQState) -> HotelIQState:
     user_message = state["messages"][-1]["content"]
     
     # Track agent execution
-    from langfuse.decorators import langfuse_context
     langfuse_context.update_current_observation(
         name="review_agent",
         input={"query": user_message, "hotel_id": hotel_id},
@@ -171,7 +172,6 @@ def review_node(state: HotelIQState) -> HotelIQState:
         
         # Generate answer - track LLM call
         from .utils import comparison_chain
-        from ..utils.langfuse_tracker import track_llm_call
         
         summary_prompt = f"Based on the following hotel reviews, {user_message}\n\nReviews:\n{context}"
         

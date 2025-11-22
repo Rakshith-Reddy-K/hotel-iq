@@ -2,11 +2,23 @@ name: Bias Detection
 
 on:
   pull_request:
-    branches: [dev, production]
+    branches: [production]
   push:
-    branches: [dev, production]
+    branches: [production]
 
 jobs:
+  check-source-branch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify source is dev
+        run: |
+          if [ "${{ github.head_ref }}" != "dev" ]; then
+            echo "PRs to production must come from dev branch"
+            echo "Current source: ${{ github.head_ref }}"
+            exit 1
+          fi
+          echo "Source branch is dev"
+
   bias-check:
     runs-on: ubuntu-latest
 

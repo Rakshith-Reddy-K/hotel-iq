@@ -9,6 +9,9 @@ Loads all prompts from prompts.yaml for easy modification without code changes.
 import yaml
 from pathlib import Path
 from typing import Dict, Any
+from logger_config import get_logger
+
+logger = get_logger(__name__)
 
 
 class PromptLoader:
@@ -42,12 +45,12 @@ class PromptLoader:
         try:
             with open(self.prompts_file, 'r', encoding='utf-8') as f:
                 self._prompts = yaml.safe_load(f)
-            print(f"✅ Prompts loaded from {self.prompts_file}")
+            logger.info("Prompts loaded", path=str(self.prompts_file))
         except FileNotFoundError:
-            print(f"⚠️ Prompts file not found: {self.prompts_file}")
+            logger.warning("Prompts file not found", path=str(self.prompts_file))
             self._prompts = {}
         except yaml.YAMLError as e:
-            print(f"⚠️ Error parsing prompts YAML: {e}")
+            logger.error("Error parsing prompts YAML", error=str(e))
             self._prompts = {}
     
     def get(self, path: str) -> str:
@@ -68,7 +71,7 @@ class PromptLoader:
                 value = value[key]
             return value if isinstance(value, str) else ""
         except (KeyError, TypeError):
-            print(f"⚠️ Prompt not found: {path}")
+            logger.warning("Prompt not found", path=path)
             return ""
     
     def format(self, path: str, **kwargs) -> str:
@@ -86,7 +89,7 @@ class PromptLoader:
         try:
             return prompt.format(**kwargs)
         except KeyError as e:
-            print(f"⚠️ Missing variable in prompt {path}: {e}")
+            logger.warning("Missing variable in prompt", path=path, error=str(e))
             return prompt
     
     def reload(self):

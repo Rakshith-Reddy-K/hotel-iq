@@ -11,9 +11,15 @@ from .state import HotelIQState
 from .config import bookings_log, BOOKINGS_PATH
 from .utils import pick_hotel_for_booking, get_history
 from .prompt_loader import get_prompts
+from logger_config import get_logger
+
+logger = get_logger(__name__)
 
 
-def booking_node(state: HotelIQState) -> HotelIQState:
+from .langfuse_tracking import track_agent
+
+@track_agent("booking_agent")
+async def booking_node(state: HotelIQState) -> HotelIQState:
     """
     Booking Agent: Handles hotel booking/reservation intent.
     
@@ -26,9 +32,8 @@ def booking_node(state: HotelIQState) -> HotelIQState:
     hotel_id = state.get("hotel_id", "")
     user_message = state["messages"][-1]["content"]
     
-    print(f"📝 Booking Agent processing for hotel_id: {hotel_id}")
+    logger.info("Booking Agent processing", hotel_id=hotel_id)
     
-    # Get hotel information from metadata
     hotel_name = "Unknown Hotel"
     star = ""
     
@@ -44,7 +49,6 @@ def booking_node(state: HotelIQState) -> HotelIQState:
     if not hotel_id:
         answer = "I apologize, but I need a valid hotel ID to process your booking. Please try again."
     else:
-        # Store a simple booking stub in our in-memory 'database'
         booking_record = {
             "thread_id": thread_id,
             "hotel_id": hotel_id,
@@ -54,22 +58,19 @@ def booking_node(state: HotelIQState) -> HotelIQState:
         }
         bookings_log.append(booking_record)
 
-        # Persist to JSON (fake DB)
         try:
             with open(BOOKINGS_PATH, "w", encoding="utf-8") as f:
                 json.dump(bookings_log, f, indent=2)
         except Exception as e:
-            print("⚠️ Failed to write bookings JSON:", e)
+            logger.error("Failed to write bookings JSON", error=str(e))
 
         answer = prompts.format("booking_agent.booking_success", hotel_name=hotel_name)
-        print(f"✅ Booking created for {hotel_name} (ID: {hotel_id})")
+        logger.info("Booking created", hotel_name=hotel_name, hotel_id=hotel_id)
 
-    # Update state and history
     msgs = state.get("messages", [])
     msgs.append({"role": "assistant", "content": answer})
     state["messages"] = msgs
 
-    # Also store in chat history
     history_obj = get_history(f"compare_{thread_id}")
     history_obj.add_user_message(user_message)
     history_obj.add_ai_message(answer)

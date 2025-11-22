@@ -1,0 +1,136 @@
+name: Bias Detection
+
+on:
+  pull_request:
+    branches: [production]
+  push:
+    branches: [production]
+
+jobs:
+  check-source-branch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify source is dev
+        run: |
+          if [ "${{ github.head_ref }}" != "dev" ]; then
+            echo "PRs to production must come from dev branch"
+            echo "Current source: ${{ github.head_ref }}"
+            exit 1
+          fi
+          echo "Source branch is dev"
+
+  bias-check:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    needs: [check-source-branch]
+    defaults:
+      run:
+        working-directory: ./bias
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.10"
+
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Verify responses file exists
+        run: |
+          if [ ! -f "response/chatbot_responses.parquet" ]; then
+            echo "Error: chatbot_responses.parquet not found"
+            exit 1
+          fi
+          echo "Responses file found"
+
+      - name: Run bias detection
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          PINECONE_API_KEY: ${{ secrets.PINECONE_API_KEY }}
+          PINECONE_INDEX_HOST: ${{ secrets.PINECONE_INDEX_HOST }}
+          SENDER_EMAIL: ${{ vars.SENDER_EMAIL }}
+          SENDER_PASSWORD: ${{ secrets.SENDER_PASSWORD }}
+          RECEIVER_EMAIL: ${{ vars.RECEIVER_EMAIL }}
+          SMTP_SERVER: ${{ vars.SMTP_SERVER }}
+          SMTP_PORT: ${{ vars.SMTP_PORT }}
+        run: python pipeline/stage_bias_detection.py
+
+      - name: Display results summary
+        if: always()
+        run: |
+          echo "=========================================="
+          echo "BIAS DETECTION RESULTS"
+          echo "=========================================="
+          if [ -f "evaluation/results/bias-summary.json" ]; then
+            cat evaluation/results/bias-summary.json | python -m json.tool
+          else
+            echo "No summary file generated"
+            exit 1
+          fi
+
+      - name: Upload bias detection results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bias-detection-results
+          path: bias/evaluation/results/
+          retention-days: 30
+
+      - name: Comment on PR
+        if: always() && github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        env:
+          BIAS_THRESHOLD: "30"
+        with:
+          script: |
+            const fs = require('fs');
+            const file = 'bias/evaluation/results/bias-summary.json';
+            const threshold = parseFloat(process.env.BIAS_THRESHOLD || '20');
+
+            let body;
+            if (!fs.existsSync(file)) {
+              body = `## ❌ Bias Detection Failed
+
+            The bias detection pipeline did not complete successfully. 
+            Please check the [workflow logs](https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}) for details.`;
+            } else {
+              const s = JSON.parse(fs.readFileSync(file, 'utf8'));
+              const rate = parseFloat(s.bias_rate);
+              const emoji = rate > threshold ? '⚠️' : '✅';
+              const status = rate > threshold ? 'HIGH BIAS DETECTED' : 'PASSED';
+              
+              const types = Object.entries(s.bias_distribution || {})
+                .map(([k, v]) => `- **${k}**: ${v} hotel(s)`)
+                .join('\n') || '- None detected';
+              
+              body = `## ${emoji} Bias Detection - ${status}
+
+            | Metric | Value |
+            |--------|-------|
+            | **Biased Hotels** | ${s.biased_hotels}/${s.total_hotels} |
+            | **Bias Rate** | ${s.bias_rate} |
+            | **Threshold** | ${threshold}% |
+            | **Status** | ${rate > threshold ? '❌ Exceeds threshold' : '✅ Within limits'} |
+
+            ### Bias Types
+            ${types}
+
+            ---
+            📥 [Download full results](https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId})
+
+            *Model: ${s.model} | Timestamp: ${s.timestamp}*`;
+            }
+
+            await github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: body
+            });

@@ -12,11 +12,23 @@ from pathlib import Path
 from typing import List, Optional
 from dataclasses import dataclass
 
-from pydantic import BaseModel
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
+from pydantic import BaseModel, Field
 
-# Setup logging FIRST
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+from agents import agent_graph
+from agents.state import HotelIQState
+from agents.validation import sanitize_user_input
+import bucket_util
+import path as path_util
+
+from logger_config import configure_logger, get_logger
+
+# Setup logging
+configure_logger()
+logger = get_logger(__name__)
 
 # ======================================================
 # GCP CREDENTIALS SETUP
@@ -27,16 +39,13 @@ if not os.getenv('GOOGLE_APPLICATION_CREDENTIALS'):
     credentials_path = Path(__file__).parent / "config" / "gcp-service-account.json"
     if credentials_path.exists():
         os.environ['GOOGLE_APPLICATION_CREDENTIALS'] = str(credentials_path)
-        logger.info(f"✅ GCP credentials loaded from: {credentials_path}")
+        logger.info("GCP credentials loaded", path=str(credentials_path))
     else:
-        logger.warning(f"⚠️ GCP credentials file not found at: {credentials_path}")
+        logger.warning("GCP credentials file not found", path=str(credentials_path))
 
 # ======================================================
-# DATA INITIALIZATION - BEFORE IMPORTING AGENTS!
+# DATA INITIALIZATION
 # ======================================================
-
-import bucket_util
-import path as path_util
 
 def check_data_files_exist(city: str) -> dict:
     """
@@ -65,22 +74,21 @@ def download_processed_data():
     """
     # Get city from environment variable, default to 'boston'
     city = os.getenv('CITY', 'boston')
-    logger.info(f"🔍 Checking data files for city: {city}")
+    logger.info("Checking data files", city=city)
     
     # Check which files exist
     files_status = check_data_files_exist(city)
     all_exist = all(files_status.values())
     
     if all_exist:
-        logger.info(f"✅ All data files already exist locally. Skipping download.")
-        logger.info(f"   Location: {Path(path_util.get_processed_dir(city))}")
+        logger.info("All data files already exist locally. Skipping download.", location=str(Path(path_util.get_processed_dir(city))))
         for file_name in files_status.keys():
             logger.info(f"   ✓ {file_name}.csv")
         return True
     
     # Log which files need to be downloaded
     missing_files = [name for name, exists in files_status.items() if not exists]
-    logger.info(f"🔄 Downloading missing data files: {', '.join(missing_files)}")
+    logger.info("Downloading missing data files", missing_files=missing_files)
     
     # Define the files to download
     files_to_download = [
@@ -101,45 +109,25 @@ def download_processed_data():
         try:
             # Check if file already exists
             if Path(local_path).exists():
-                logger.info(f"⏭️  Skipping {file_name}.csv (already exists)")
+                logger.info(f"Skipping {file_name}.csv (already exists)")
                 skipped_count += 1
                 success_count += 1
                 continue
             
-            logger.info(f"📥 Downloading {file_name}.csv...")
+            logger.info(f"Downloading {file_name}.csv...")
             bucket_util.download_file_from_gcs(gcs_path, local_path)
-            logger.info(f"✅ Successfully downloaded {file_name}.csv")
+            logger.info(f"Successfully downloaded {file_name}.csv")
             success_count += 1
         except Exception as e:
-            logger.error(f"❌ Failed to download {file_name}.csv: {e}")
+            logger.error(f"Failed to download {file_name}.csv", error=str(e))
             # Continue downloading other files even if one fails
     
     if skipped_count > 0:
-        logger.info(f"📦 Downloaded {success_count - skipped_count}/{len(files_to_download)} files, skipped {skipped_count} existing files")
+        logger.info("Download summary", downloaded=success_count - skipped_count, total=len(files_to_download), skipped=skipped_count)
     else:
-        logger.info(f"📦 Downloaded {success_count}/{len(files_to_download)} files successfully")
+        logger.info("Download summary", downloaded=success_count, total=len(files_to_download))
     
     return success_count == len(files_to_download)
-
-
-# Download data BEFORE importing agents
-logger.info("📥 Downloading data files before importing agents...")
-try:
-    download_processed_data()
-    logger.info("✅ Data files ready, now importing agents...")
-except Exception as e:
-    logger.warning(f"⚠️ Data download failed: {e}")
-    logger.info("Continuing with agent import (may fail if data is required)...")
-
-# NOW import agents (after data is downloaded)
-from agents import agent_graph
-from agents.state import HotelIQState
-
-# Import FastAPI components
-from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
 
 # ======================================================
 # FASTAPI APP SETUP
@@ -150,59 +138,15 @@ FRONTEND_DIR = BASE_DIR / "frontend"
 
 app = FastAPI(title="HotelIQ Comparison API")
 
-# ======================================================
-# HEALTH CHECK ENDPOINTS
-# ======================================================
-
-@app.get("/")
-async def root():
-    """Root endpoint."""
-    return {
-        "message": "HotelIQ API is running",
-        "status": "ok",
-        "service": "hoteliq-backend",
-        "version": "1.0.0"
-    }
-
-@app.get("/health")
-async def health_check():
-    """Health check endpoint for Docker and Cloud Run."""
-    return {
-        "status": "healthy",
-        "service": "hoteliq-backend",
-        "version": "1.0.0"
-    }
-
-@app.get("/health/ready")
-async def readiness_check():
-    """
-    Readiness check - verifies app is ready to serve traffic.
-    Checks if data files are available.
-    """
-    city = os.getenv('CITY', 'boston')
-    files_status = check_data_files_exist(city)
-    all_ready = all(files_status.values())
-    
-    return {
-        "status": "ready" if all_ready else "not_ready",
-        "service": "hoteliq-backend",
-        "data_files": files_status,
-        "city": city
-    }
-
-# ======================================================
-# STARTUP EVENT
-# ======================================================
-
+# Add startup event to download data
 @app.on_event("startup")
 async def startup_event():
     """Execute on application startup."""
-    logger.info("🚀 HotelIQ API startup complete!")
+    logger.info("Starting HotelIQ API...")
+    download_processed_data()
+    logger.info("Startup complete!")
 
-# ======================================================
-# CORS CONFIGURATION
-# ======================================================
-
+# CORS configuration
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -211,25 +155,18 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# ======================================================
-# SERVE FRONTEND (if available)
-# ======================================================
-
 # Serve frontend static files
 if FRONTEND_DIR.exists():
     app.mount("/static", StaticFiles(directory=str(FRONTEND_DIR)), name="static")
-    logger.info(f"✅ Frontend mounted from: {FRONTEND_DIR}")
 else:
-    logger.warning(f"⚠️ Frontend directory not found: {FRONTEND_DIR}")
+    logger.warning("Frontend directory not found", path=str(FRONTEND_DIR))
 
 # Route to return chat.html UI
 @app.get("/chat")
 async def chat_page():
     """Serve the chat interface HTML page."""
-    chat_html = FRONTEND_DIR / "chat.html"
-    if chat_html.exists():
-        return FileResponse(chat_html)
-    return {"error": "Chat page not found"}
+    return FileResponse(FRONTEND_DIR / "chat.html")
+
 
 # ======================================================
 # CHAT SERVICE
@@ -283,9 +220,9 @@ class ChatService:
                 previous_messages = previous_state.values.get("messages", [])
                 if previous_messages:
                     messages = previous_messages.copy()
-                    logger.info(f"📜 Retrieved {len(messages)} previous messages for thread {thread_id}")
+                    logger.info("Retrieved previous messages", count=len(messages), thread_id=thread_id)
         except Exception as e:
-            logger.warning(f"⚠️ Could not retrieve previous state: {e}")
+            logger.warning("Could not retrieve previous state", error=str(e))
         
         # Append new user message
         messages.append({"role": "user", "content": message})
@@ -323,18 +260,38 @@ class ChatService:
 
 # Initialize chat service
 chat_service = ChatService(agent_graph)
-logger.info("✅ ChatService ready.")
+logger.info("ChatService ready.")
+
 
 # ======================================================
 # API ROUTES
 # ======================================================
 
 class ChatRequest(BaseModel):
-    """Request model for chat endpoint."""
-    message: str
-    user_id: str
-    hotel_id: str  # Required hotel_id from frontend
-    thread_id: Optional[str] = None
+    """Request model for chat endpoint with validation."""
+    message: str = Field(
+        ...,
+        min_length=1,
+        max_length=2000,
+        description="User message (1-2000 characters)"
+    )
+    user_id: str = Field(
+        ...,
+        min_length=1,
+        max_length=100,
+        description="User identifier"
+    )
+    hotel_id: str = Field(
+        ...,
+        min_length=1,
+        max_length=50,
+        description="Hotel identifier"
+    )
+    thread_id: Optional[str] = Field(
+        None,
+        max_length=200,
+        description="Thread identifier for conversation continuity"
+    )
 
 
 class ChatResponseModel(BaseModel):
@@ -351,9 +308,14 @@ async def send_message(request: ChatRequest):
     
     This endpoint receives user messages and returns AI-generated responses
     along with follow-up suggestions.
+    
+    Input validation and sanitization is performed automatically by Pydantic.
     """
+    # Additional sanitization for extra security
+    sanitized_message = sanitize_user_input(request.message)
+    
     res = await chat_service.process_message(
-        message=request.message,
+        message=sanitized_message,
         thread_id=request.thread_id,
         user_id=request.user_id,
         hotel_id=request.hotel_id,
@@ -365,7 +327,8 @@ async def send_message(request: ChatRequest):
     )
 
 
-logger.info("✅ FastAPI app created and ready.")
+logger.info("FastAPI app created.")
+
 
 # ======================================================
 # LOCAL RUN ENTRYPOINT
@@ -377,8 +340,8 @@ if __name__ == "__main__":
     
     Preferred method:
         cd backend
-        uvicorn main:app --reload --port 8000
+        uvicorn main:app --reload --port 8001
     """
     import uvicorn
-    port = int(os.environ.get("PORT", 8000)) 
-    uvicorn.run(app, host="0.0.0.0", port=port)
+    uvicorn.run(app, host="0.0.0.0", port=8001)
+

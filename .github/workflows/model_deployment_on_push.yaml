@@ -46,9 +46,78 @@ jobs:
 
           echo "Production branch is up to date with dev"
 
+  commit-bias-results:
+    name: Commit Bias Detection Results
+    needs: check-branch-sync
+    runs-on: ubuntu-latest
+    if: "!contains(github.event.head_commit.message, '[skip ci]')"
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          fetch-depth: 0
+
+      - name: Find PR associated with this merge
+        id: find-pr
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const commit = context.sha;
+            const { data: prs } = await github.rest.repos.listPullRequestsAssociatedWithCommit({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              commit_sha: commit
+            });
+            if (prs.length > 0) {
+              console.log(`Found PR #${prs[0].number}`);
+              return prs[0].number;
+            }
+            console.log('No PR found for this commit');
+            return null;
+          result-encoding: string
+
+      - name: Download bias detection artifacts from PR
+        if: steps.find-pr.outputs.result != 'null'
+        uses: dawidd6/action-download-artifact@v3
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          workflow: bias-detection.yml
+          pr: ${{ steps.find-pr.outputs.result }}
+          name_is_regexp: true
+          name: "bias-detection-results-.*"
+          path: bias/evaluation/results/
+          check_artifacts: true
+          search_artifacts: true
+        continue-on-error: true
+
+      - name: Verify bias results downloaded
+        id: verify
+        run: |
+          if [ -f "bias/evaluation/results/bias-summary.json" ]; then
+            echo "results_found=true" >> $GITHUB_OUTPUT
+            echo "Bias detection results found"
+            cat bias/evaluation/results/bias-summary.json | python3 -m json.tool
+          else
+            echo "results_found=false" >> $GITHUB_OUTPUT
+            echo "No bias detection results found"
+          fi
+
+      - name: Commit bias results to production
+        if: steps.verify.outputs.results_found == 'true'
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: "chore: update bias detection results [skip ci]"
+          file_pattern: "bias/evaluation/results/*"
+          commit_user_name: "github-actions[bot]"
+          commit_user_email: "github-actions[bot]@users.noreply.github.com"
+          branch: production
+
   build-and-deploy:
     name: Build and Deploy
-    needs: check-branch-sync
+    needs: [check-branch-sync, commit-bias-results]
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -114,7 +183,7 @@ jobs:
             --max-instances=${{ env.MAX_INSTANCES }} \
             --concurrency=${{ env.CONCURRENCY }} \
             --set-env-vars="VERSION=${{ steps.tags.outputs.version_tag }},ENV=${{ env.ENVIRONMENT }},REGION=${{ env.REGION }},SERVICE_NAME=${{ env.SERVICE_NAME }},HOTEL_INDEX_NAME=${{ env.HOTEL_INDEX_NAME }},REVIEWS_INDEX_NAME=${{ env.REVIEWS_INDEX_NAME }},GCS_BUCKET_NAME=${{ env.GCS_BUCKET_NAME }},GCP_PROJECT_ID=${{ env.PROJECT_ID }},GCP_INSTANCE_NAME=${{ env.PROJECT_ID }}" \
-            --set-secrets="GOOGLE_API_KEY=GOOGLE_API_KEY:latest,OPENAI_API_KEY=OPENAI_API_KEY:latest,PINECONE_API_KEY=PINECONE_API_KEY:latest" \
+            --set-secrets="GOOGLE_API_KEY=GOOGLE_API_KEY:latest,OPENAI_API_KEY=OPENAI_API_KEY:latest,PINECONE_API_KEY=PINECONE_API_KEY:latest,LANGFUSE_SECRET_KEY=LANGFUSE_SECRET_KEY:latest,LANGFUSE_PUBLIC_KEY=LANGFUSE_PUBLIC_KEY:latest,LANGFUSE_BASE_URL:LANGFUSE_BASE_URL:latest" \
             --quiet
 
       - name: Get service URL

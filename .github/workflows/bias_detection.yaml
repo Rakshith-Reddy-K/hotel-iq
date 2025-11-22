@@ -21,6 +21,9 @@ jobs:
 
   bias-check:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
     needs: [check-source-branch]
     defaults:
       run:
@@ -77,29 +80,57 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: bias-detection-results
-          path: evaluation/results/
+          path: bias/evaluation/results/
           retention-days: 30
 
-      - name: Comment PR with results
+      - name: Comment on PR
         if: always() && github.event_name == 'pull_request'
-        run: |
-          SUMMARY_FILE="evaluation/results/bias-summary.json"
-
-          if [ ! -f "$SUMMARY_FILE" ]; then
-            gh pr comment ${{ github.event.pull_request.number }} \
-              --body "Bias detection failed"
-            exit 0
-          fi
-
-          BIASED=$(python -c "import json; print(json.load(open('$SUMMARY_FILE'))['biased_hotels'])")
-          TOTAL=$(python -c "import json; print(json.load(open('$SUMMARY_FILE'))['total_hotels'])")
-          RATE=$(python -c "import json; print(json.load(open('$SUMMARY_FILE'))['bias_rate'])")
-
-          gh pr comment ${{ github.event.pull_request.number }} --body \
-          "## Bias Detection Results
-
-          **Status**: $BIASED/$TOTAL hotels ($RATE)
-
-          View full results in workflow artifacts."
+        uses: actions/github-script@v7
         env:
-          GH_TOKEN: ${{ github.token }}
+          BIAS_THRESHOLD: "30"
+        with:
+          script: |
+            const fs = require('fs');
+            const file = 'bias/evaluation/results/bias-summary.json';
+            const threshold = parseFloat(process.env.BIAS_THRESHOLD || '20');
+
+            let body;
+            if (!fs.existsSync(file)) {
+              body = `## ❌ Bias Detection Failed
+
+            The bias detection pipeline did not complete successfully. 
+            Please check the [workflow logs](https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}) for details.`;
+            } else {
+              const s = JSON.parse(fs.readFileSync(file, 'utf8'));
+              const rate = parseFloat(s.bias_rate);
+              const emoji = rate > threshold ? '⚠️' : '✅';
+              const status = rate > threshold ? 'HIGH BIAS DETECTED' : 'PASSED';
+              
+              const types = Object.entries(s.bias_distribution || {})
+                .map(([k, v]) => `- **${k}**: ${v} hotel(s)`)
+                .join('\n') || '- None detected';
+              
+              body = `## ${emoji} Bias Detection - ${status}
+
+            | Metric | Value |
+            |--------|-------|
+            | **Biased Hotels** | ${s.biased_hotels}/${s.total_hotels} |
+            | **Bias Rate** | ${s.bias_rate} |
+            | **Threshold** | ${threshold}% |
+            | **Status** | ${rate > threshold ? '❌ Exceeds threshold' : '✅ Within limits'} |
+
+            ### Bias Types
+            ${types}
+
+            ---
+            📥 [Download full results](https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId})
+
+            *Model: ${s.model} | Timestamp: ${s.timestamp}*`;
+            }
+
+            await github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: body
+            });

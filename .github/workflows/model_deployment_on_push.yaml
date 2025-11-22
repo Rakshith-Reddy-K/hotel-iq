@@ -51,7 +51,8 @@ jobs:
     needs: check-branch-sync
     runs-on: ubuntu-latest
     if: "!contains(github.event.head_commit.message, '[skip ci]')"
-
+    permissions:
+      contents: write
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -61,7 +62,7 @@ jobs:
 
       - name: Find PR associated with this merge
         id: find-pr
-        uses: actions/github-script@v6
+        uses: actions/github-script@v7
         with:
           script: |
             const commit = context.sha;
@@ -71,9 +72,8 @@ jobs:
               commit_sha: commit
             });
             if (prs.length > 0) {
-              const pr = prs[0];
-              console.log(`Found PR #${pr.number}`);
-              return pr.number;
+              console.log(`Found PR #${prs[0].number}`);
+              return prs[0].number;
             }
             console.log('No PR found for this commit');
             return null;
@@ -81,13 +81,14 @@ jobs:
 
       - name: Download bias detection artifacts from PR
         if: steps.find-pr.outputs.result != 'null'
-        uses: dawidd6/action-download-artifact@v2
+        uses: dawidd6/action-download-artifact@v3
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          workflow: pr-bias-check.yml
+          workflow: bias-detection.yml
           pr: ${{ steps.find-pr.outputs.result }}
-          name: pr-${{ steps.find-pr.outputs.result }}-bias-results
-          path: evaluation/results/
+          name_is_regexp: true
+          name: "bias-detection-results-.*"
+          path: bias/evaluation/results/
           check_artifacts: true
           search_artifacts: true
         continue-on-error: true
@@ -95,10 +96,10 @@ jobs:
       - name: Verify bias results downloaded
         id: verify
         run: |
-          if [ -f "evaluation/results/bias-summary.json" ]; then
+          if [ -f "bias/evaluation/results/bias-summary.json" ]; then
             echo "results_found=true" >> $GITHUB_OUTPUT
             echo "Bias detection results found"
-            cat evaluation/results/bias-summary.json | python3 -m json.tool
+            cat bias/evaluation/results/bias-summary.json | python3 -m json.tool
           else
             echo "results_found=false" >> $GITHUB_OUTPUT
             echo "No bias detection results found"
@@ -106,10 +107,10 @@ jobs:
 
       - name: Commit bias results to production
         if: steps.verify.outputs.results_found == 'true'
-        uses: stefanzweifel/git-auto-commit-action@v4
+        uses: stefanzweifel/git-auto-commit-action@v5
         with:
-          commit_message: "chore: add bias detection results for ${{ github.sha }} [skip ci]"
-          file_pattern: "evaluation/results/*"
+          commit_message: "chore: update bias detection results [skip ci]"
+          file_pattern: "bias/evaluation/results/*"
           commit_user_name: "github-actions[bot]"
           commit_user_email: "github-actions[bot]@users.noreply.github.com"
           branch: production

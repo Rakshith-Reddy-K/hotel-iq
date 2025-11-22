@@ -21,7 +21,10 @@ jobs:
 
   bias-check:
     runs-on: ubuntu-latest
-
+    needs: [check-source-branch]
+    defaults:
+      run:
+        working-directory: ./bias
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -54,7 +57,7 @@ jobs:
           RECEIVER_EMAIL: ${{ vars.RECEIVER_EMAIL }}
           SMTP_SERVER: ${{ vars.SMTP_SERVER }}
           SMTP_PORT: ${{ vars.SMTP_PORT }}
-        run: python pipeline/bias_detection_pipeline.py
+        run: python pipeline/stage_bias_detection.py
 
       - name: Display results summary
         if: always()

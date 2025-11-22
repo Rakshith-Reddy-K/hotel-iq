@@ -1,11 +1,9 @@
 {
-  "timestamp": "2025-11-21T17:06:11.123540",
+  "timestamp": "2025-11-22T21:54:09.136803",
   "total_hotels": 22,
-  "biased_hotels": 4,
-  "bias_rate": "18.2%",
-  "bias_distribution": {
-    "rating_disparity": 4
-  },
+  "biased_hotels": 0,
+  "bias_rate": "0.0%",
+  "bias_distribution": {},
   "low_review_hotels": 0,
   "type2_detection_rate": "N/A",
   "model": "gpt-4o-mini",

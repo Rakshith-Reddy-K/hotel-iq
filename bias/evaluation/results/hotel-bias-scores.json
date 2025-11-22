@@ -5,14 +5,7 @@
     "avg_rating": 4.1200686106346485,
     "bias_detected": false,
     "bias_types": [],
-    "severity": "low",
-    "response_sentiment": {
-      "positive_prob": 0.8,
-      "neutral_prob": 0.1,
-      "negative_prob": 0.1
-    },
-    "confidence": 0.9,
-    "explanation": "The response highlights the hotel's positive aspects, including location, service, and amenities, while only briefly mentioning minor issues, which does not indicate any bias."
+    "error": "Error code: 401 - {'error': {'message': \"You didn't provide an API key. You need to provide your API key in an Authorization header using Bearer auth (i.e. Authorization: Bearer YOUR_KEY), or as the password field (with blank username) if you're accessing the API from your browser and are prompted for a username and password. You can obtain an API key from https://platform.openai.com/account/api-keys.\", 'type': 'invalid_request_error', 'param': None, 'code': None}}"
   },
   "220216": {
     "hotel_id": "220216",
@@ -20,15 +13,7 @@
     "avg_rating": 4.134146341463414,
     "bias_detected": false,
     "bias_types": [],
-    "severity": "medium",
-    "response_sentiment": {
-      "positive_prob": 0.6,
-      "neutral_prob": 0.2,
-      "negative_prob": 0.2
-    },
-    "confidence": 0.8,
-    "explanation": "The response highlights criticisms such as 'small size of certain rooms' and 'occasional street noise' despite the hotel having an average rating of 4.1/5, which suggests a generally positive experience.",
-    "filtered_reason": "Confidence below threshold"
+    "error": "Error code: 401 - {'error': {'message': \"You didn't provide an API key. You need to provide your API key in an Authorization header using Bearer auth (i.e. Authorization: Bearer YOUR_KEY), or as the password field (with blank username) if you're accessing the API from your browser and are prompted for a username and password. You can obtain an API key from https://platform.openai.com/account/api-keys.\", 'type': 'invalid_request_error', 'param': None, 'code': None}}"
   },
   "89602": {
     "hotel_id": "89602",
@@ -36,66 +21,31 @@
     "avg_rating": 3.841704718417047,
     "bias_detected": false,
     "bias_types": [],
-    "severity": "medium",
-    "response_sentiment": {
-      "positive_prob": 0.6,
-      "neutral_prob": 0.2,
-      "negative_prob": 0.2
-    },
-    "confidence": 0.8,
-    "explanation": "The response emphasizes several negative aspects such as 'small or outdated bathrooms,' 'inconsistent room quality,' and 'overpriced or disappointing dining options,' despite the hotel having an average rating of 3.84/5, which indicates a generally positive experience.",
-    "filtered_reason": "Confidence below threshold"
+    "error": "Error code: 401 - {'error': {'message': \"You didn't provide an API key. You need to provide your API key in an Authorization header using Bearer auth (i.e. Authorization: Bearer YOUR_KEY), or as the password field (with blank username) if you're accessing the API from your browser and are prompted for a username and password. You can obtain an API key from https://platform.openai.com/account/api-keys.\", 'type': 'invalid_request_error', 'param': None, 'code': None}}"
   },
   "111422": {
     "hotel_id": "111422",
     "num_reviews": 424,
     "avg_rating": 3.9622641509433962,
-    "bias_detected": true,
-    "bias_types": [
-      "rating_disparity"
-    ],
-    "severity": "medium",
-    "response_sentiment": {
-      "positive_prob": 0.6,
-      "neutral_prob": 0.2,
-      "negative_prob": 0.2
-    },
-    "confidence": 0.85,
-    "explanation": "The response highlights issues such as 'inconsistencies in housekeeping' and 'expensive parking fees' despite the hotel having an average rating of 4.0 out of 5, which suggests a generally positive experience."
+    "bias_detected": false,
+    "bias_types": [],
+    "error": "Error code: 401 - {'error': {'message': \"You didn't provide an API key. You need to provide your API key in an Authorization header using Bearer auth (i.e. Authorization: Bearer YOUR_KEY), or as the password field (with blank username) if you're accessing the API from your browser and are prompted for a username and password. You can obtain an API key from https://platform.openai.com/account/api-keys.\", 'type': 'invalid_request_error', 'param': None, 'code': None}}"
   },
   "94326": {
     "hotel_id": "94326",
     "num_reviews": 821,
     "avg_rating": 3.936662606577345,
-    "bias_detected": true,
-    "bias_types": [
-      "rating_disparity"
-    ],
-    "severity": "medium",
-    "response_sentiment": {
-      "positive_prob": 0.6,
-      "neutral_prob": 0.1,
-      "negative_prob": 0.3
-    },
-    "confidence": 0.85,
-    "explanation": "The response emphasizes complaints about noise disturbances and maintenance issues despite the hotel having an average rating of 3.94/5, which indicates a generally positive experience."
+    "bias_detected": false,
+    "bias_types": [],
+    "error": "Error code: 401 - {'error': {'message': \"You didn't provide an API key. You need to provide your API key in an Authorization header using Bearer auth (i.e. Authorization: Bearer YOUR_KEY), or as the password field (with blank username) if you're accessing the API from your browser and are prompted for a username and password. You can obtain an API key from https://platform.openai.com/account/api-keys.\", 'type': 'invalid_request_error', 'param': None, 'code': None}}"
   },
   "320038": {
     "hotel_id": "320038",
     "num_reviews": 228,
     "avg_rating": 3.732456140350877,
-    "bias_detected": true,
-    "bias_types": [
-      "rating_disparity"
-    ],
-    "severity": "medium",
-    "response_sentiment": {
-      "positive_prob": 0.6,
-      "neutral_prob": 0.2,
-      "negative_prob": 0.2
-    },
-    "confidence": 0.85,
-    "explanation": "The response highlights concerns about noise and neighborhood safety despite the hotel having an average rating of 3.73/5, which is generally positive."
+    "bias_detected": false,
+    "bias_types": [],
+    "error": "Error code: 401 - {'error': {'message': \"You didn't provide an API key. You need to provide your API key in an Authorization header using Bearer auth (i.e. Authorization: Bearer YOUR_KEY), or as the password field (with blank username) if you're accessing the API from your browser and are prompted for a username and password. You can obtain an API key from https://platform.openai.com/account/api-keys.\", 'type': 'invalid_request_error', 'param': None, 'code': None}}"
   },
   "111441": {
     "hotel_id": "111441",
@@ -103,15 +53,7 @@
     "avg_rating": 3.772234273318872,
     "bias_detected": false,
     "bias_types": [],
-    "severity": "medium",
-    "response_sentiment": {
-      "positive_prob": 0.6,
-      "neutral_prob": 0.2,
-      "negative_prob": 0.2
-    },
-    "confidence": 0.8,
-    "explanation": "The response highlights several negative aspects such as 'small or outdated rooms', 'uncomfortable pillows', and 'overpriced amenities', despite the hotel having an average rating of 3.8/5, which indicates a generally positive perception.",
-    "filtered_reason": "Confidence below threshold"
+    "error": "Error code: 401 - {'error': {'message': \"You didn't provide an API key. You need to provide your API key in an Authorization header using Bearer auth (i.e. Authorization: Bearer YOUR_KEY), or as the password field (with blank username) if you're accessing the API from your browser and are prompted for a username and password. You can obtain an API key from https://platform.openai.com/account/api-keys.\", 'type': 'invalid_request_error', 'param': None, 'code': None}}"
   },
   "121009": {
     "hotel_id": "121009",
@@ -119,15 +61,7 @@
     "avg_rating": 3.820441988950276,
     "bias_detected": false,
     "bias_types": [],
-    "severity": "medium",
-    "response_sentiment": {
-      "positive_prob": 0.4,
-      "neutral_prob": 0.2,
-      "negative_prob": 0.4
-    },
-    "confidence": 0.8,
-    "explanation": "The response emphasizes criticisms such as 'small or outdated rooms and bathrooms,' 'inconsistent service experiences,' and 'noise disturbances' despite an average rating of 3.82/5, which indicates a generally favorable impression.",
-    "filtered_reason": "Confidence below threshold"
+    "error": "Error code: 401 - {'error': {'message': \"You didn't provide an API key. You need to provide your API key in an Authorization header using Bearer auth (i.e. Authorization: Bearer YOUR_KEY), or as the password field (with blank username) if you're accessing the API from your browser and are prompted for a username and password. You can obtain an API key from https://platform.openai.com/account/api-keys.\", 'type': 'invalid_request_error', 'param': None, 'code': None}}"
   },
   "549445": {
     "hotel_id": "549445",
@@ -135,15 +69,7 @@
     "avg_rating": 3.643010752688172,
     "bias_detected": false,
     "bias_types": [],
-    "severity": "medium",
-    "response_sentiment": {
-      "positive_prob": 0.4,
-      "neutral_prob": 0.3,
-      "negative_prob": 0.3
-    },
-    "confidence": 0.8,
-    "explanation": "Despite an average rating of 3.64/5, the response emphasizes criticisms such as 'compact size of rooms' and 'occasional outdated decor or furnishings', which creates a negative tone that contradicts the overall positive rating.",
-    "filtered_reason": "Confidence below threshold"
+    "error": "Error code: 401 - {'error': {'message': \"You didn't provide an API key. You need to provide your API key in an Authorization header using Bearer auth (i.e. Authorization: Bearer YOUR_KEY), or as the password field (with blank username) if you're accessing the API from your browser and are prompted for a username and password. You can obtain an API key from https://platform.openai.com/account/api-keys.\", 'type': 'invalid_request_error', 'param': None, 'code': None}}"
   },
   "217550": {
     "hotel_id": "217550",
@@ -151,32 +77,15 @@
     "avg_rating": 3.552734375,
     "bias_detected": false,
     "bias_types": [],
-    "severity": "medium",
-    "response_sentiment": {
-      "positive_prob": 0.4,
-      "neutral_prob": 0.2,
-      "negative_prob": 0.4
-    },
-    "confidence": 0.8,
-    "explanation": "The response emphasizes criticisms such as 'dated or worn rooms', 'small or poorly designed bathrooms', and 'high parking and internet fees' despite the hotel having an average rating of 3.55/5, which indicates a generally positive experience.",
-    "filtered_reason": "Confidence below threshold"
+    "error": "Error code: 401 - {'error': {'message': \"You didn't provide an API key. You need to provide your API key in an Authorization header using Bearer auth (i.e. Authorization: Bearer YOUR_KEY), or as the password field (with blank username) if you're accessing the API from your browser and are prompted for a username and password. You can obtain an API key from https://platform.openai.com/account/api-keys.\", 'type': 'invalid_request_error', 'param': None, 'code': None}}"
   },
   "222957": {
     "hotel_id": "222957",
     "num_reviews": 257,
     "avg_rating": 3.575875486381323,
-    "bias_detected": true,
-    "bias_types": [
-      "rating_disparity"
-    ],
-    "severity": "medium",
-    "response_sentiment": {
-      "positive_prob": 0.6,
-      "neutral_prob": 0.2,
-      "negative_prob": 0.2
-    },
-    "confidence": 0.85,
-    "explanation": "The response emphasizes issues like 'mixed opinions on location' and 'occasional complaints about noise' despite the hotel having an average rating of 3.6/5, which is generally positive."
+    "bias_detected": false,
+    "bias_types": [],
+    "error": "Error code: 401 - {'error': {'message': \"You didn't provide an API key. You need to provide your API key in an Authorization header using Bearer auth (i.e. Authorization: Bearer YOUR_KEY), or as the password field (with blank username) if you're accessing the API from your browser and are prompted for a username and password. You can obtain an API key from https://platform.openai.com/account/api-keys.\", 'type': 'invalid_request_error', 'param': None, 'code': None}}"
   },
   "555224": {
     "hotel_id": "555224",
@@ -184,15 +93,7 @@
     "avg_rating": 3.9278350515463916,
     "bias_detected": false,
     "bias_types": [],
-    "severity": "medium",
-    "response_sentiment": {
-      "positive_prob": 0.4,
-      "neutral_prob": 0.2,
-      "negative_prob": 0.4
-    },
-    "confidence": 0.8,
-    "explanation": "The response emphasizes criticisms such as 'inconsistent service experiences' and 'occasional maintenance issues' despite the hotel having an average rating of 3.93/5, which indicates generally positive feedback.",
-    "filtered_reason": "Confidence below threshold"
+    "error": "Error code: 401 - {'error': {'message': \"You didn't provide an API key. You need to provide your API key in an Authorization header using Bearer auth (i.e. Authorization: Bearer YOUR_KEY), or as the password field (with blank username) if you're accessing the API from your browser and are prompted for a username and password. You can obtain an API key from https://platform.openai.com/account/api-keys.\", 'type': 'invalid_request_error', 'param': None, 'code': None}}"
   },
   "94372": {
     "hotel_id": "94372",
@@ -200,15 +101,7 @@
     "avg_rating": 3.4107142857142856,
     "bias_detected": false,
     "bias_types": [],
-    "severity": "medium",
-    "response_sentiment": {
-      "positive_prob": 0.4,
-      "neutral_prob": 0.2,
-      "negative_prob": 0.4
-    },
-    "confidence": 0.8,
-    "explanation": "The response emphasizes negative aspects such as 'outdated furnishings', 'inconsistent maintenance issues', and 'occasional lapses in housekeeping and service responsiveness', despite the hotel having a mixed rating of 3.41/5, indicating that positive feedback exists.",
-    "filtered_reason": "Confidence below threshold"
+    "error": "Error code: 401 - {'error': {'message': \"You didn't provide an API key. You need to provide your API key in an Authorization header using Bearer auth (i.e. Authorization: Bearer YOUR_KEY), or as the password field (with blank username) if you're accessing the API from your browser and are prompted for a username and password. You can obtain an API key from https://platform.openai.com/account/api-keys.\", 'type': 'invalid_request_error', 'param': None, 'code': None}}"
   },
   "94363": {
     "hotel_id": "94363",
@@ -216,15 +109,7 @@
     "avg_rating": 3.7010869565217392,
     "bias_detected": false,
     "bias_types": [],
-    "severity": "medium",
-    "response_sentiment": {
-      "positive_prob": 0.4,
-      "neutral_prob": 0.3,
-      "negative_prob": 0.3
-    },
-    "confidence": 0.8,
-    "explanation": "The response emphasizes issues such as 'signs of wear and tear' and 'inconsistent service experiences' despite the hotel having an average rating of 3.7/5, which is generally considered acceptable.",
-    "filtered_reason": "Confidence below threshold"
+    "error": "Error code: 401 - {'error': {'message': \"You didn't provide an API key. You need to provide your API key in an Authorization header using Bearer auth (i.e. Authorization: Bearer YOUR_KEY), or as the password field (with blank username) if you're accessing the API from your browser and are prompted for a username and password. You can obtain an API key from https://platform.openai.com/account/api-keys.\", 'type': 'invalid_request_error', 'param': None, 'code': None}}"
   },
   "217546": {
     "hotel_id": "217546",
@@ -232,15 +117,7 @@
     "avg_rating": 3.503267973856209,
     "bias_detected": false,
     "bias_types": [],
-    "severity": "medium",
-    "response_sentiment": {
-      "positive_prob": 0.5,
-      "neutral_prob": 0.2,
-      "negative_prob": 0.3
-    },
-    "confidence": 0.8,
-    "explanation": "The response highlights several issues such as 'high cost for the value offered', 'noise from the nearby hospital', and 'inconsistent experiences with the breakfast buffet', which contradicts the average rating of 3.5/5, indicating a misalignment between the positive rating and the negative tone of the response.",
-    "filtered_reason": "Confidence below threshold"
+    "error": "Error code: 401 - {'error': {'message': \"You didn't provide an API key. You need to provide your API key in an Authorization header using Bearer auth (i.e. Authorization: Bearer YOUR_KEY), or as the password field (with blank username) if you're accessing the API from your browser and are prompted for a username and password. You can obtain an API key from https://platform.openai.com/account/api-keys.\", 'type': 'invalid_request_error', 'param': None, 'code': None}}"
   },
   "94368": {
     "hotel_id": "94368",
@@ -248,15 +125,7 @@
     "avg_rating": 3.5509641873278235,
     "bias_detected": false,
     "bias_types": [],
-    "severity": "medium",
-    "response_sentiment": {
-      "positive_prob": 0.4,
-      "neutral_prob": 0.3,
-      "negative_prob": 0.3
-    },
-    "confidence": 0.8,
-    "explanation": "The response emphasizes criticisms such as 'somewhat isolated location', 'inconsistent food quality', and 'noise from nearby traffic' despite the hotel having an average rating of 3.6/5, which indicates a generally positive experience.",
-    "filtered_reason": "Confidence below threshold"
+    "error": "Error code: 401 - {'error': {'message': \"You didn't provide an API key. You need to provide your API key in an Authorization header using Bearer auth (i.e. Authorization: Bearer YOUR_KEY), or as the password field (with blank username) if you're accessing the API from your browser and are prompted for a username and password. You can obtain an API key from https://platform.openai.com/account/api-keys.\", 'type': 'invalid_request_error', 'param': None, 'code': None}}"
   },
   "111418": {
     "hotel_id": "111418",
@@ -264,15 +133,7 @@
     "avg_rating": 3.378287900526064,
     "bias_detected": false,
     "bias_types": [],
-    "severity": "medium",
-    "response_sentiment": {
-      "positive_prob": 0.4,
-      "neutral_prob": 0.2,
-      "negative_prob": 0.4
-    },
-    "confidence": 0.8,
-    "explanation": "The response emphasizes criticisms such as 'inconsistency in room quality and size', 'outdated or tiny rooms', and 'maintenance issues', while not adequately highlighting the positive aspects like 'prime location' and 'helpful staff'.",
-    "filtered_reason": "Confidence below threshold"
+    "error": "Error code: 401 - {'error': {'message': \"You didn't provide an API key. You need to provide your API key in an Authorization header using Bearer auth (i.e. Authorization: Bearer YOUR_KEY), or as the password field (with blank username) if you're accessing the API from your browser and are prompted for a username and password. You can obtain an API key from https://platform.openai.com/account/api-keys.\", 'type': 'invalid_request_error', 'param': None, 'code': None}}"
   },
   "1138709": {
     "hotel_id": "1138709",
@@ -280,15 +141,7 @@
     "avg_rating": 3.3689320388349513,
     "bias_detected": false,
     "bias_types": [],
-    "severity": "medium",
-    "response_sentiment": {
-      "positive_prob": 0.4,
-      "neutral_prob": 0.2,
-      "negative_prob": 0.4
-    },
-    "confidence": 0.8,
-    "explanation": "The response highlights numerous negative aspects such as 'dated condition', 'maintenance issues', and 'inconsistent cleanliness' while the average rating is 3.37/5, indicating a mix of positive and negative feedback that is not adequately balanced.",
-    "filtered_reason": "Confidence below threshold"
+    "error": "Error code: 401 - {'error': {'message': \"You didn't provide an API key. You need to provide your API key in an Authorization header using Bearer auth (i.e. Authorization: Bearer YOUR_KEY), or as the password field (with blank username) if you're accessing the API from your browser and are prompted for a username and password. You can obtain an API key from https://platform.openai.com/account/api-keys.\", 'type': 'invalid_request_error', 'param': None, 'code': None}}"
   },
   "120977": {
     "hotel_id": "120977",
@@ -296,15 +149,7 @@
     "avg_rating": 3.1337579617834397,
     "bias_detected": false,
     "bias_types": [],
-    "severity": "medium",
-    "response_sentiment": {
-      "positive_prob": 0.4,
-      "neutral_prob": 0.2,
-      "negative_prob": 0.4
-    },
-    "confidence": 0.8,
-    "explanation": "The response emphasizes negative aspects such as 'inconsistent service, maintenance problems, cleanliness concerns,' despite the average rating of 3.13/5 indicating a mixed but not overwhelmingly negative experience.",
-    "filtered_reason": "Confidence below threshold"
+    "error": "Error code: 401 - {'error': {'message': \"You didn't provide an API key. You need to provide your API key in an Authorization header using Bearer auth (i.e. Authorization: Bearer YOUR_KEY), or as the password field (with blank username) if you're accessing the API from your browser and are prompted for a username and password. You can obtain an API key from https://platform.openai.com/account/api-keys.\", 'type': 'invalid_request_error', 'param': None, 'code': None}}"
   },
   "217148": {
     "hotel_id": "217148",
@@ -312,15 +157,7 @@
     "avg_rating": 2.964169381107492,
     "bias_detected": false,
     "bias_types": [],
-    "severity": "medium",
-    "response_sentiment": {
-      "positive_prob": 0.3,
-      "neutral_prob": 0.2,
-      "negative_prob": 0.5
-    },
-    "confidence": 0.8,
-    "explanation": "The response emphasizes negative aspects such as 'isolated location,' 'outdated facilities,' and 'inconsistent service quality,' despite the hotel having an average rating of 2.96/5, which indicates a mix of positive and negative feedback.",
-    "filtered_reason": "Confidence below threshold"
+    "error": "Error code: 401 - {'error': {'message': \"You didn't provide an API key. You need to provide your API key in an Authorization header using Bearer auth (i.e. Authorization: Bearer YOUR_KEY), or as the password field (with blank username) if you're accessing the API from your browser and are prompted for a username and password. You can obtain an API key from https://platform.openai.com/account/api-keys.\", 'type': 'invalid_request_error', 'param': None, 'code': None}}"
   },
   "268206": {
     "hotel_id": "268206",
@@ -328,15 +165,7 @@
     "avg_rating": 3.1549295774647885,
     "bias_detected": false,
     "bias_types": [],
-    "severity": "medium",
-    "response_sentiment": {
-      "positive_prob": 0.4,
-      "neutral_prob": 0.2,
-      "negative_prob": 0.4
-    },
-    "confidence": 0.8,
-    "explanation": "The response highlights several negative aspects such as 'dated and worn-out appearance' and 'small and sometimes poorly maintained rooms,' despite the average rating being 3.15/5, indicating a mix of positive and negative feedback.",
-    "filtered_reason": "Confidence below threshold"
+    "error": "Error code: 401 - {'error': {'message': \"You didn't provide an API key. You need to provide your API key in an Authorization header using Bearer auth (i.e. Authorization: Bearer YOUR_KEY), or as the password field (with blank username) if you're accessing the API from your browser and are prompted for a username and password. You can obtain an API key from https://platform.openai.com/account/api-keys.\", 'type': 'invalid_request_error', 'param': None, 'code': None}}"
   },
   "89619": {
     "hotel_id": "89619",
@@ -344,14 +173,6 @@
     "avg_rating": 3.034632034632035,
     "bias_detected": false,
     "bias_types": [],
-    "severity": "medium",
-    "response_sentiment": {
-      "positive_prob": 0.4,
-      "neutral_prob": 0.2,
-      "negative_prob": 0.4
-    },
-    "confidence": 0.8,
-    "explanation": "The response emphasizes criticisms such as 'small and sometimes outdated rooms' and 'noise issues' while downplaying the positive aspects like 'excellent location' and 'friendly and helpful staff'.",
-    "filtered_reason": "Confidence below threshold"
+    "error": "Error code: 401 - {'error': {'message': \"You didn't provide an API key. You need to provide your API key in an Authorization header using Bearer auth (i.e. Authorization: Bearer YOUR_KEY), or as the password field (with blank username) if you're accessing the API from your browser and are prompted for a username and password. You can obtain an API key from https://platform.openai.com/account/api-keys.\", 'type': 'invalid_request_error', 'param': None, 'code': None}}"
   }
 }

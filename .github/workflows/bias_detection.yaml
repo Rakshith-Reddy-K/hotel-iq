@@ -2,9 +2,9 @@ name: Bias Detection
 
 on:
   pull_request:
-    branches: [production]
+    branches: [dev, production]
   push:
-    branches: [production]
+    branches: [dev, production]
 
 jobs:
   check-source-branch:
@@ -21,7 +21,7 @@ jobs:
 
   bias-check:
     runs-on: ubuntu-latest
-
+    needs: [check-source-branch]
     steps:
       - name: Checkout code
         uses: actions/checkout@v4

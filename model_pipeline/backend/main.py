@@ -138,6 +138,42 @@ FRONTEND_DIR = BASE_DIR / "frontend"
 
 app = FastAPI(title="HotelIQ Comparison API")
 
+@app.get("/")
+async def root():
+    """Root endpoint."""
+    return {
+        "message": "HotelIQ API is running",
+        "status": "ok",
+        "service": "hoteliq-backend",
+        "version": "1.0.0"
+    }
+
+@app.get("/health")
+async def health_check():
+    """Health check endpoint for Docker and Cloud Run."""
+    return {
+        "status": "healthy",
+        "service": "hoteliq-backend",
+        "version": "1.0.0"
+    }
+
+@app.get("/health/ready")
+async def readiness_check():
+    """
+    Readiness check - verifies app is ready to serve traffic.
+    Checks if data files are available.
+    """
+    city = os.getenv('CITY', 'boston')
+    files_status = check_data_files_exist(city)
+    all_ready = all(files_status.values())
+    
+    return {
+        "status": "ready" if all_ready else "not_ready",
+        "service": "hoteliq-backend",
+        "data_files": files_status,
+        "city": city
+    }
+
 # Add startup event to download data
 @app.on_event("startup")
 async def startup_event():
@@ -340,8 +376,9 @@ if __name__ == "__main__":
     
     Preferred method:
         cd backend
-        uvicorn main:app --reload --port 8001
+        uvicorn main:app --reload --port 8000
     """
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8001)
+    port = int(os.environ.get("PORT", 8000)) 
+    uvicorn.run(app, host="0.0.0.0", port=port)
 

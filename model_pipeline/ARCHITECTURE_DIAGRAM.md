@@ -88,7 +88,7 @@
 │                      ▼                                       │
 │  ┌────────────────────────────────────────────────┐        │
 │  │ 2. Retrieve hotel information                  │        │
-│  │    • Search vector DB by hotel_id              │        │
+│  │    • Read from hotels.csv by hotel_id          │        │
 │  │    • Extract: name, rating, address, desc      │        │
 │  │    • Cache in conversation_context             │        │
 │  └────────────────────────────────────────────────┘        │
@@ -161,8 +161,8 @@
 │  Input: hotel_id, user query                                │
 │                                                              │
 │  ┌────────────────────────────────────────────────┐        │
-│  │ 1. Retrieve reviews from vector DB             │        │
-│  │    • Query reviews_retriever                   │        │
+│  │ 1. Retrieve reviews from Pinecone              │        │
+│  │    • Query Pinecone Reviews Index              │        │
 │  │    • Get all relevant review documents         │        │
 │  └────────────────────────────────────────────────┘        │
 │                      │                                       │
@@ -223,9 +223,10 @@
 │  │ Similar Hotels   │  │  Hotel Info      │              │
 │  │                  │  │                  │              │
 │  │ 1. Get hotel desc│  │ 1. Retrieve docs │              │
-│  │ 2. Search vector │  │    by hotel_id   │              │
-│  │    DB for similar│  │                  │              │
-│  │ 3. Filter out    │  │ 2. Filter to     │              │
+│  │ 2. Search Pine-  │  │    from CSV      │              │
+│  │    cone for sim- │  │                  │              │
+│  │    ilar hotels   │  │ 2. Filter to     │              │
+│  │ 3. Filter out    │  │    exact hotel_id│              │
 │  │    current hotel │  │    exact hotel_id│              │
 │  │ 4. Return top 3  │  │                  │              │
 │  │                  │  │ 3. Generate      │              │
@@ -303,13 +304,13 @@
 ├─────────────────────────────────────────────────────────────┤
 │                                                              │
 │  ┌──────────────────────┐  ┌──────────────────────┐        │
-│  │  VECTOR DATABASES    │  │  SQLITE DATABASE     │        │
+│  │  VECTOR DATABASES    │  │  STRUCTURED DATA     │        │
 │  │                      │  │                      │        │
-│  │ Chroma Hotels        │  │ hoteliq_demo.db      │        │
-│  │ ├─ hotel_info        │  │ ├─ hotels table     │        │
-│  │ └─ metadata          │  │ └─ reviews table    │        │
+│  │ Pinecone Hotels Idx  │  │ hotels.csv           │        │
+│  │ ├─ hotel_info        │  │ ├─ hotel details     │        │
+│  │ └─ metadata          │  │ └─ attributes        │        │
 │  │                      │  │                      │        │
-│  │ Chroma Reviews       │  └──────────────────────┘        │
+│  │ Pinecone Reviews Idx │  └──────────────────────┘        │
 │  │ ├─ review_text       │                                   │
 │  │ └─ ratings           │  ┌──────────────────────┐        │
 │  └──────────────────────┘  │  JSON FILES          │        │
@@ -467,12 +468,6 @@ Optimizations:
 - ✅ Multiple hotels (hotel_id separation)
 - ✅ Long conversations (message history management)
 - ✅ Context persistence (MemorySaver checkpointer)
-
-### Future Scaling Options:
-- 🔄 Redis for conversation context (distributed)
-- 🔄 PostgreSQL for structured data (better than SQLite)
-- 🔄 Elasticsearch for full-text search
-- 🔄 Load balancer for multiple API instances
 
 ---
 

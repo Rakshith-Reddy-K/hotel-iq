@@ -14,68 +14,67 @@ from langchain_core.output_parsers import StrOutputParser
 from langchain_core.chat_history import InMemoryChatMessageHistory
 
 from .config import (
-    llm, embeddings, HOTELS_PATH, REVIEWS_PATH,
-    last_suggestions, conversation_context
+    llm, embeddings, HOTELS_PATH, REVIEWS_PATH
 )
 from .prompt_loader import get_prompts
+from logger_config import get_logger
 
-# ======================================================
-# LAZY DATA LOADING
-# ======================================================
+logger = get_logger(__name__)
 
-# Global variables (initialized on first access)
-_hotels_df = None
-_reviews_df = None
-_df = None
-_hotel_info_retriever = None
-_reviews_retriever = None
-_hotel_info_docs = None
-_review_docs = None
-_initialized = False
 
-def _initialize_data():
+
+
+# Global variables for lazy loading
+_data_loaded = False
+hotels_df = None
+df = None
+hotel_info_docs: List[Document] = []
+review_docs: List[Document] = []
+hotel_info_retriever = None
+reviews_retriever = None
+
+
+def _load_data():
     """
-    Initialize all data and retrievers (called on first access).
-    This allows data files to be downloaded before import.
+    Lazy load hotel and review data from CSV files.
+    This is called on first access to avoid loading at import time.
     """
-    global _hotels_df, _reviews_df, _df
-    global _hotel_info_retriever, _reviews_retriever
-    global _hotel_info_docs, _review_docs, _initialized
+    global _data_loaded, hotels_df, df, hotel_info_docs, review_docs, hotel_info_retriever, reviews_retriever
     
-    if _initialized:
+    if _data_loaded:
         return
     
-    print("📥 Loading data from CSV files...")
+    logger.info("Loading hotel data from CSV files...")
     
-    # ---------- Load hotels ----------
-    _hotels_df = pd.read_csv(HOTELS_PATH).fillna("")
+    # Load hotels data
+    hotels_df = pd.read_csv(HOTELS_PATH).fillna("")
 
     possible_name_cols = ["official_name", "hotel_name", "name"]
-    name_col = next((c for c in possible_name_cols if c in _hotels_df.columns), None)
+    name_col = next((c for c in possible_name_cols if c in hotels_df.columns), None)
     if name_col is None:
-        _hotels_df["official_name"] = ""
+        hotels_df["official_name"] = ""
     else:
-        _hotels_df["official_name"] = _hotels_df[name_col].astype(str)
+        hotels_df["official_name"] = hotels_df[name_col].astype(str)
 
-    if "hotel_id" not in _hotels_df.columns:
+    if "hotel_id" not in hotels_df.columns:
         raise ValueError("Hotels CSV file must contain a 'hotel_id' column.")
 
     for col in ["description", "additional_info", "address"]:
-        if col not in _hotels_df.columns:
-            _hotels_df[col] = ""
+        if col not in hotels_df.columns:
+            hotels_df[col] = ""
 
-    if "star_rating" not in _hotels_df.columns:
-        _hotels_df["star_rating"] = ""
+    if "star_rating" not in hotels_df.columns:
+        hotels_df["star_rating"] = ""
 
-    _hotels_df["hotel_info_text"] = (
-        _hotels_df["description"].astype(str)
+    hotels_df["hotel_info_text"] = (
+        hotels_df["description"].astype(str)
         + "\n\n"
-        + _hotels_df["additional_info"].astype(str)
+        + hotels_df["additional_info"].astype(str)
         + "\n\nAddress: "
-        + _hotels_df["address"].astype(str)
+        + hotels_df["address"].astype(str)
     ).str.strip()
 
-    # ---------- Load & aggregate reviews (optional) ----------
+    # Load reviews data
     if REVIEWS_PATH.exists():
         raw_reviews_df = pd.read_csv(REVIEWS_PATH).fillna("")
         if "hotel_id" not in raw_reviews_df.columns:
@@ -94,22 +93,21 @@ def _initialize_data():
             lambda x: "\n\n".join(v for v in x if str(v).strip())
         ).reset_index()
         aggs = aggs.rename(columns={"__review_text__": "reviews_text"})
-        _reviews_df = aggs
+        reviews_df = aggs
     else:
-        print("Reviews CSV file not found; continuing without reviews.")
-        _reviews_df = pd.DataFrame(columns=["hotel_id", "reviews_text"])
+        logger.warning("Reviews CSV file not found; continuing without reviews.")
+        reviews_df = pd.DataFrame(columns=["hotel_id", "reviews_text"])
 
-    _df = _hotels_df.merge(_reviews_df, on="hotel_id", how="left")
-    _df["reviews_text"] = _df["reviews_text"].fillna("")
+    df = hotels_df.merge(reviews_df, on="hotel_id", how="left")
+    df["reviews_text"] = df["reviews_text"].fillna("")
 
-    print("✅ Hotels dataframe ready, sample:")
-    print(_df[["hotel_id", "official_name", "star_rating"]].head())
+    logger.info("Hotels dataframe ready", sample=df[["hotel_id", "official_name", "star_rating"]].head().to_dict())
 
-    # ---------- Build documents ----------
-    _hotel_info_docs = []
-    _review_docs = []
+    # Build document collections
+    hotel_info_docs.clear()
+    review_docs.clear()
 
-    for _, row in _df.iterrows():
+    for _, row in df.iterrows():
         meta = {
             "hotel_id": str(row["hotel_id"]),
             "name": str(row["official_name"]),
@@ -118,7 +116,7 @@ def _initialize_data():
 
         info_text = str(row["hotel_info_text"]).strip()
         if info_text:
-            _hotel_info_docs.append(
+            hotel_info_docs.append(
                 Document(
                     page_content=info_text,
                     metadata={**meta, "source": "hotel_info"},
@@ -127,68 +125,49 @@ def _initialize_data():
 
         reviews_text = str(row["reviews_text"]).strip()
         if reviews_text:
-            _review_docs.append(
+            review_docs.append(
                 Document(
                     page_content=reviews_text,
                     metadata={**meta, "source": "review"},
                 )
             )
 
-    print(
-        f"Prepared {len(_hotel_info_docs)} hotel info docs and "
-        f"{len(_review_docs)} review docs."
+    logger.info(
+        "Prepared docs",
+        hotel_info_docs=len(hotel_info_docs),
+        review_docs=len(review_docs)
     )
 
-    # ---------- Build retrievers ----------
-    _hotel_info_retriever = SimpleInMemoryRetriever(_hotel_info_docs, embeddings, k=8)
-    _reviews_retriever = (
-        SimpleInMemoryRetriever(_review_docs, embeddings, k=8)
-        if _review_docs
+    # Initialize retrievers
+    hotel_info_retriever = SimpleInMemoryRetriever(hotel_info_docs, embeddings, k=8)
+    reviews_retriever = (
+        SimpleInMemoryRetriever(review_docs, embeddings, k=8)
+        if review_docs
         else None
     )
 
-    print("✅ SimpleInMemoryRetriever ready.")
-    
-    _initialized = True
+    logger.info("SimpleInMemoryRetriever ready.")
+    _data_loaded = True
 
 
-# Getter functions
 def get_hotels_df():
-    """Get hotels dataframe (loads data on first access)."""
-    _initialize_data()
-    return _hotels_df
+    """Get the hotels dataframe, loading data if necessary."""
+    _load_data()
+    return df
 
-def get_df():
-    """Get merged dataframe (loads data on first access)."""
-    _initialize_data()
-    return _df
 
 def get_hotel_info_retriever():
-    """Get hotel info retriever (loads data on first access)."""
-    _initialize_data()
-    return _hotel_info_retriever
+    """Get the hotel info retriever, loading data if necessary."""
+    _load_data()
+    return hotel_info_retriever
+
 
 def get_reviews_retriever():
-    """Get reviews retriever (loads data on first access)."""
-    _initialize_data()
-    return _reviews_retriever
+    """Get the reviews retriever, loading data if necessary."""
+    _load_data()
+    return reviews_retriever
 
-# Backward compatibility - module-level variables that trigger lazy loading
-def __getattr__(name):
-    """Module-level attribute access that triggers lazy loading."""
-    if name == "hotels_df":
-        return get_hotels_df()
-    elif name == "df":
-        return get_df()
-    elif name == "hotel_info_retriever":
-        return get_hotel_info_retriever()
-    elif name == "reviews_retriever":
-        return get_reviews_retriever()
-    raise AttributeError(f"module '{__name__}' has no attribute '{name}'")
 
-# ======================================================
-# SIMPLE IN-MEMORY RETRIEVER
-# ======================================================
 
 class SimpleInMemoryRetriever:
     """
@@ -217,9 +196,7 @@ class SimpleInMemoryRetriever:
         idxs = np.argsort(scores)[::-1][:k]
         return [self.docs[i] for i in idxs]
 
-# ======================================================
-# MEMORY & HISTORY
-# ======================================================
+
 
 session_store: Dict[str, InMemoryChatMessageHistory] = {}
 
@@ -237,9 +214,7 @@ def get_limited_history_text(
     msgs = history_obj.messages[-max_messages:]
     return "\n".join([f"{m.type.upper()}: {m.content}" for m in msgs])
 
-# ======================================================
-# CONTEXT BUILDING
-# ======================================================
+
 
 def truncate_text(text: str, max_chars: int = 5000) -> str:
     """Truncate text to maximum character limit."""
@@ -260,15 +235,13 @@ def build_context_text(info_docs: Iterable[Document], review_docs: Iterable[Docu
     if review_text.strip():
         sections.append("GUEST REVIEWS:\n" + review_text)
     
-    # Debug: Print context length
+
     context = "\n\n".join(sections) if sections else "No relevant hotel context found."
-    print(f"📊 Context built: {len(context)} chars | Info docs: {len(info_docs_list)} | Review docs: {len(review_docs_list)}")
+    logger.info("Context built", length=len(context), info_docs=len(info_docs_list), review_docs=len(review_docs_list))
     
     return context
 
-# ======================================================
-# INTENT DETECTION
-# ======================================================
+
 
 def detect_comparison_intent(text: str) -> bool:
     """Detect if user wants to compare hotels."""
@@ -291,18 +264,24 @@ def detect_booking_intent(text: str) -> bool:
     ]
     return any(kw in t for kw in booking_keywords)
 
-# ======================================================
-# LEGACY QUERY RESOLUTION (Backup)
-# ======================================================
 
-def resolve_query_with_context(user_message: str, thread_id: str, history_text: str) -> str:
+
+async def resolve_query_with_context(user_message: str, state: Dict[str, Any], history_text: str) -> str:
     """
     Legacy/fallback function to resolve contextual references.
     Mainly used as backup if metadata agent is bypassed.
+    
+    Args:
+        user_message: The user's query message
+        state: HotelIQState containing last_suggestions
+        history_text: Conversation history text
+    
+    Returns:
+        Resolved query with hotel references replaced
     """
     text = user_message.lower()
     
-    # Check if query contains contextual references
+
     contextual_refs = [
         "this hotel", "that hotel", "the hotel", "this one", "that one",
         "it", "its", "the amenities", "their", "they", "there"
@@ -312,7 +291,7 @@ def resolve_query_with_context(user_message: str, thread_id: str, history_text: 
     if not has_reference:
         return user_message
     
-    suggestions = last_suggestions.get(thread_id, [])
+    suggestions = state.get("last_suggestions", [])
     if not suggestions:
         return user_message
     
@@ -331,7 +310,8 @@ def resolve_query_with_context(user_message: str, thread_id: str, history_text: 
     )
     
     try:
-        rewritten = llm.invoke(rewrite_prompt).content.strip()
+        response = await llm.ainvoke(rewrite_prompt)
+        rewritten = response.content.strip()
         if len(rewritten) > len(user_message) * 3 or hotel_name.lower() not in rewritten.lower():
             # Fallback
             rewritten = user_message.replace("this hotel", hotel_name)
@@ -341,23 +321,28 @@ def resolve_query_with_context(user_message: str, thread_id: str, history_text: 
         rewritten = user_message.replace("this hotel", hotel_name)
         return rewritten
 
-# ======================================================
-# BOOKING HELPER
-# ======================================================
 
-def pick_hotel_for_booking(user_message: str, thread_id: str) -> Optional[Dict[str, str]]:
+
+def pick_hotel_for_booking(user_message: str, state: Dict[str, Any]) -> Optional[Dict[str, str]]:
     """
     Try to figure out which hotel the user wants to book:
     1) Match hotel name from text
-    2) If they say 'first one' / 'second one', use last_suggestions[thread_id]
+    2) If they say 'first one' / 'second one', use state["last_suggestions"]
+    
+    Args:
+        user_message: The user's booking request message
+        state: HotelIQState containing last_suggestions
+    
+    Returns:
+        Hotel dict with hotel_id, name, and star_rating, or None if not found
     """
-    # Use lazy-loaded df
-    current_df = get_df()
     text = user_message.lower()
 
-    # 1) Try name match
+    # Get the hotels dataframe
+    hotels_data = get_hotels_df()
+
     best_match = None
-    for _, row in current_df.iterrows():
+    for _, row in hotels_data.iterrows():
         name = str(row["official_name"])
         if not name.strip():
             continue
@@ -371,8 +356,8 @@ def pick_hotel_for_booking(user_message: str, thread_id: str) -> Optional[Dict[s
     if best_match:
         return best_match
 
-    # 2) Look at last_suggestions
-    suggestions = last_suggestions.get(thread_id, [])
+
+    suggestions = state.get("last_suggestions", [])
     if not suggestions:
         return None
 
@@ -382,7 +367,7 @@ def pick_hotel_for_booking(user_message: str, thread_id: str) -> Optional[Dict[s
     if has_contextual_ref:
         return suggestions[-1] if suggestions else None
     
-    # Ordinal logic
+
     idx = None
     if "first" in text or "1st" in text:
         idx = 0
@@ -396,9 +381,7 @@ def pick_hotel_for_booking(user_message: str, thread_id: str) -> Optional[Dict[s
 
     return suggestions[-1] if suggestions else None
 
-# ======================================================
-# COMPARISON PROMPT / CHAIN
-# ======================================================
+
 
 def _get_comparison_prompt():
     """Load comparison prompt from YAML file."""
@@ -406,6 +389,7 @@ def _get_comparison_prompt():
     prompt_text = prompts.get("comparison_agent.main_prompt")
     return ChatPromptTemplate.from_template(prompt_text)
 
-# Initialize the comparison chain with prompt from YAML
+
 comparison_prompt = _get_comparison_prompt()
 comparison_chain = comparison_prompt | llm | StrOutputParser()
+

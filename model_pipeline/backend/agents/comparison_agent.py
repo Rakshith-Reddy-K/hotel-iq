@@ -9,12 +9,14 @@ from typing import Dict, List
 from langchain_core.documents import Document
 
 from .state import HotelIQState
-from .config import last_suggestions, conversation_context
-from .pinecone_retrieval import find_similar_hotels  # Only for similar hotel search
+from .pinecone_retrieval import find_similar_hotels 
 from .utils import (
     comparison_chain, get_history, get_limited_history_text,
     build_context_text, detect_comparison_intent, resolve_query_with_context
 )
+from logger_config import get_logger
+
+logger = get_logger(__name__)
 
 
 def detect_similar_hotel_intent(query: str) -> bool:
@@ -98,15 +100,12 @@ def format_similar_hotels_response(similar_hotels: List[Document]) -> str:
     return response
 
 
-def comparison_node(state: HotelIQState) -> HotelIQState:
+from .langfuse_tracking import track_agent
+
+@track_agent("comparison_agent")
+async def comparison_node(state: HotelIQState) -> HotelIQState:
     """
     Comparison Agent: Handles hotel information retrieval and similar hotel search.
-    
-    Features:
-    - Works with specific hotel_id from state
-    - Handles general information queries about the hotel
-    - Finds similar hotels when requested
-    - Provides formatted responses with hotel links
     """
     thread_id = state.get("thread_id", "unknown_thread")
     hotel_id = state.get("hotel_id", "")
@@ -115,30 +114,26 @@ def comparison_node(state: HotelIQState) -> HotelIQState:
 
     user_message = state["messages"][-1]["content"]
     
-    print(f"🔍 Comparison Agent processing query for hotel_id: {hotel_id}")
-    
-    # Use resolved query from metadata agent if available
+    logger.info("Comparison Agent processing query", hotel_id=hotel_id)
+
     if "metadata" in state and "resolved_query" in state["metadata"]:
         query_for_retrieval = state["metadata"]["resolved_query"]
-        print(f"📌 Using resolved query: '{query_for_retrieval}'")
+        logger.info("Using resolved query", query=query_for_retrieval)
     else:
         query_for_retrieval = user_message
     
-    # Check if user wants similar hotels
     wants_similar = detect_similar_hotel_intent(query_for_retrieval)
 
-    # Handle similar hotel search
     if wants_similar:
-        # Use Pinecone to find similar hotels
+
         try:
             similar_hotels = find_similar_hotels(hotel_id, top_k=3, exclude_current=True)
             answer = format_similar_hotels_response(similar_hotels)
         except Exception as e:
-            print(f"⚠️ Error finding similar hotels: {e}")
+            logger.error("Error finding similar hotels", error=str(e))
             answer = "I apologize, but I encountered an error while searching for similar hotels. Please try again."
     else:
-        # Regular information query about the current hotel
-        # Use hotel info from metadata (loaded from CSV)
+        
         try:
             hotel_info = state.get("metadata", {}).get("hotel_info")
             hotel_name = state.get("metadata", {}).get("hotel_name", "this hotel")
@@ -146,7 +141,6 @@ def comparison_node(state: HotelIQState) -> HotelIQState:
             if not hotel_info:
                 answer = f"I don't have information about {hotel_name}. Please try again."
             else:
-                # Build context from CSV data
                 context_parts = []
                 
                 context_parts.append(f"Hotel Name: {hotel_info.get('hotel_name', 'N/A')}")
@@ -170,19 +164,17 @@ def comparison_node(state: HotelIQState) -> HotelIQState:
                 
                 context_text = "\n".join(context_parts)
                 
-                print(f"📊 Using CSV data for hotel_id {hotel_id}")
+                logger.info("Using CSV data for hotel", hotel_id=hotel_id)
                 
-                # Generate response using LLM with CSV context
                 answer = comparison_chain.invoke(
                     {"history": history_text, "context": context_text, "question": user_message}
                 )
         except Exception as e:
-            print(f"⚠️ Error retrieving hotel information: {e}")
+            logger.error("Error retrieving hotel information", error=str(e))
             import traceback
             traceback.print_exc()
             answer = "I apologize, but I encountered an error while retrieving hotel information. Please try again."
 
-    # Update state and history
     msgs = state.get("messages", [])
     msgs.append({"role": "assistant", "content": answer})
     state["messages"] = msgs

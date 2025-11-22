@@ -10,9 +10,16 @@ from typing import List, Dict, Any, Optional
 from pinecone import Pinecone
 from langchain_openai import OpenAIEmbeddings
 from langchain_core.documents import Document
+from dotenv import load_dotenv
+load_dotenv()
+import sys
+import os
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from logger_config import get_logger
+
+logger = get_logger(__name__)
 
 
-# Initialize Pinecone client
 def get_pinecone_client():
     """Initialize and return Pinecone client."""
     api_key = os.getenv("PINECONE_API_KEY")
@@ -23,7 +30,6 @@ def get_pinecone_client():
     return pc
 
 
-# Initialize embeddings model
 embeddings = OpenAIEmbeddings(
     model="text-embedding-3-large",  # 3072 dimensions
     openai_api_key=os.getenv("OPENAI_API_KEY")
@@ -52,15 +58,12 @@ def retrieve_hotels_by_description(
         ...     print(hotel.metadata["hotel_name"], hotel.metadata["address"])
     """
     try:
-        # Get Pinecone client
         pc = get_pinecone_client()
         index_name = os.getenv("HOTEL_INDEX_NAME")
         index = pc.Index(index_name)
         
-        # Generate query embedding
         query_embedding = embeddings.embed_query(query)
         
-        # Query Pinecone
         results = index.query(
             vector=query_embedding,
             top_k=top_k,
@@ -68,26 +71,18 @@ def retrieve_hotels_by_description(
             filter=filter_dict
         )
         
-        # Convert to LangChain Document objects
         documents = []
         for match in results.matches:
-            # Extract metadata
             metadata = match.metadata
             
-            # DEBUG: Print all available metadata keys to see what Pinecone actually has
-            if len(documents) == 0:  # Only print for first result
-                print(f"🔍 DEBUG: Pinecone metadata keys: {list(metadata.keys())}")
-                print(f"🔍 DEBUG: Raw metadata sample: {metadata}")
+
             
-            # The text/description should be in metadata or we reconstruct it
             description = metadata.get("description", "")
             if not description:
                 # Reconstruct description from available fields
                 hotel_name = metadata.get("hotel_name") or metadata.get("official_name") or metadata.get("name") or "Unknown Hotel"
                 description = f"{hotel_name} located at {metadata.get('address', 'Unknown Address')}"
             
-            # Create Document with all available metadata fields
-            # Use flexible field name matching since we don't know what was uploaded
             doc = Document(
                 page_content=description,
                 metadata={
@@ -109,11 +104,11 @@ def retrieve_hotels_by_description(
             )
             documents.append(doc)
         
-        print(f"📊 Retrieved {len(documents)} hotels from Pinecone")
+        logger.info("Retrieved hotels from Pinecone", count=len(documents))
         return documents
         
     except Exception as e:
-        print(f"⚠️ Error retrieving hotels from Pinecone: {e}")
+        logger.error("Error retrieving hotels from Pinecone", error=str(e))
         return []
 
 
@@ -150,10 +145,8 @@ def retrieve_reviews_by_query(
         # Generate query embedding
         query_embedding = embeddings.embed_query(query)
         
-        # Build filter
         final_filter = filter_dict or {}
         if hotel_id:
-            # Add hotel_id to filter
             if final_filter:
                 final_filter = {"$and": [final_filter, {"hotel_id": hotel_id}]}
             else:
@@ -173,10 +166,8 @@ def retrieve_reviews_by_query(
             # Extract metadata
             metadata = match.metadata
             
-            # The review text should be in metadata
             review_text = metadata.get("review_text", metadata.get("text", ""))
             
-            # Create Document
             doc = Document(
                 page_content=review_text,
                 metadata={
@@ -189,11 +180,11 @@ def retrieve_reviews_by_query(
             )
             documents.append(doc)
         
-        print(f"📊 Retrieved {len(documents)} reviews from Pinecone" + (f" for hotel_id={hotel_id}" if hotel_id else ""))
+        logger.info("Retrieved reviews from Pinecone", count=len(documents), hotel_id=hotel_id)
         return documents
         
     except Exception as e:
-        print(f"⚠️ Error retrieving reviews from Pinecone: {e}")
+        logger.error("Error retrieving reviews from Pinecone", error=str(e))
         return []
 
 
@@ -213,7 +204,6 @@ def get_hotel_by_id(hotel_id: str) -> Optional[Document]:
         ...     print(hotel.metadata["hotel_name"])
     """
     try:
-        # Use filter to get specific hotel
         hotels = retrieve_hotels_by_description(
             query="hotel",  # Generic query since we're filtering by ID
             top_k=1,
@@ -223,11 +213,11 @@ def get_hotel_by_id(hotel_id: str) -> Optional[Document]:
         if hotels:
             return hotels[0]
         else:
-            print(f"⚠️ Hotel with ID {hotel_id} not found in Pinecone")
+            logger.warning("Hotel not found in Pinecone", hotel_id=hotel_id)
             return None
             
     except Exception as e:
-        print(f"⚠️ Error retrieving hotel by ID: {e}")
+        logger.error("Error retrieving hotel by ID", error=str(e))
         return None
 
 
@@ -254,7 +244,6 @@ def get_reviews_by_hotel_id(
         >>> print(f"Found {len(reviews)} reviews with rating >= 4.0")
     """
     try:
-        # Build filter for ratings
         filter_dict = None
         if min_rating is not None or max_rating is not None:
             rating_filter = {}
@@ -264,7 +253,6 @@ def get_reviews_by_hotel_id(
                 rating_filter["$lte"] = max_rating
             filter_dict = {"overall_rating": rating_filter}
         
-        # Retrieve reviews with a generic query since we're filtering by hotel_id
         reviews = retrieve_reviews_by_query(
             query="review",  # Generic query
             hotel_id=hotel_id,
@@ -275,7 +263,7 @@ def get_reviews_by_hotel_id(
         return reviews
         
     except Exception as e:
-        print(f"⚠️ Error retrieving reviews for hotel {hotel_id}: {e}")
+        logger.error("Error retrieving reviews for hotel", hotel_id=hotel_id, error=str(e))
         return []
 
 
@@ -301,17 +289,14 @@ def find_similar_hotels(
         ...     print(f"Similar hotel: {hotel.metadata['hotel_name']}")
     """
     try:
-        # First, get the current hotel's information
         current_hotel = get_hotel_by_id(hotel_id)
         
         if not current_hotel:
-            print(f"⚠️ Could not find hotel {hotel_id} to find similar hotels")
+            logger.warning("Could not find hotel to find similar hotels", hotel_id=hotel_id)
             return []
         
-        # Use the hotel's description to find similar ones
         description = current_hotel.page_content
         
-        # Get more results if we need to exclude current
         search_k = top_k + 1 if exclude_current else top_k
         
         similar_hotels = retrieve_hotels_by_description(
@@ -319,22 +304,20 @@ def find_similar_hotels(
             top_k=search_k
         )
         
-        # Filter out the current hotel if requested
         if exclude_current:
             similar_hotels = [
                 hotel for hotel in similar_hotels 
                 if hotel.metadata.get("hotel_id") != hotel_id
             ][:top_k]
         
-        print(f"🔍 Found {len(similar_hotels)} similar hotels to hotel_id={hotel_id}")
+        logger.info("Found similar hotels", count=len(similar_hotels), hotel_id=hotel_id)
         return similar_hotels
         
     except Exception as e:
-        print(f"⚠️ Error finding similar hotels: {e}")
+        logger.error("Error finding similar hotels", error=str(e))
         return []
 
 
-# Test functions (for development/debugging)
 def test_hotel_retrieval():
     """Test hotel retrieval function."""
     print("\n=== Testing Hotel Retrieval ===")
@@ -359,12 +342,12 @@ def test_review_retrieval():
 
 if __name__ == "__main__":
     """Run tests when script is executed directly."""
-    print("🔧 Running Pinecone Retrieval Tests...")
+    logger.info("Running Pinecone Retrieval Tests...")
     
     try:
         test_hotel_retrieval()
         test_review_retrieval()
-        print("\n✅ Tests completed!")
+        logger.info("Tests completed!")
     except Exception as e:
-        print(f"\n❌ Test failed: {e}")
+        logger.error("Test failed", error=str(e))
 

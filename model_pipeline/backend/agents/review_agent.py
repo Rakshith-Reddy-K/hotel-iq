@@ -12,6 +12,9 @@ from .state import HotelIQState
 from .pinecone_retrieval import retrieve_reviews_by_query, get_reviews_by_hotel_id
 from .utils import get_history, get_limited_history_text
 from .prompt_loader import get_prompts
+from logger_config import get_logger
+
+logger = get_logger(__name__)
 
 
 def detect_review_summary_intent(query: str) -> bool:
@@ -88,7 +91,6 @@ def generate_review_summary(reviews: List[Document], query: str, history_text: s
     if not reviews:
         return "No reviews found for this hotel."
     
-    # Build context from reviews
     review_texts = []
     for review in reviews[:20]:  # Limit to 20 reviews for summary
         rating = review.metadata.get("rating", "N/A")
@@ -96,7 +98,6 @@ def generate_review_summary(reviews: List[Document], query: str, history_text: s
     
     context = "\n\n---\n\n".join(review_texts)
     
-    # Use comparison chain for now (we can create a specialized one later)
     from .utils import comparison_chain
     
     summary_prompt = f"Based on the following hotel reviews, {query}\n\nReviews:\n{context}"
@@ -109,11 +110,14 @@ def generate_review_summary(reviews: List[Document], query: str, history_text: s
         })
         return summary
     except Exception as e:
-        print(f"⚠️ Error generating review summary: {e}")
+        logger.error("Error generating review summary", error=str(e))
         return "I apologize, but I encountered an error while summarizing the reviews. Please try again."
 
 
-def review_node(state: HotelIQState) -> HotelIQState:
+from .langfuse_tracking import track_agent
+
+@track_agent("review_agent")
+async def review_node(state: HotelIQState) -> HotelIQState:
     """
     Review Agent: Handles review-specific queries for a hotel.
     
@@ -130,43 +134,34 @@ def review_node(state: HotelIQState) -> HotelIQState:
     history_obj = get_history(f"compare_{thread_id}")
     history_text = get_limited_history_text(history_obj)
     
-    print(f"🔍 Review Agent processing query for hotel_id: {hotel_id}")
+    logger.info("Review Agent processing query", hotel_id=hotel_id)
     
-    # Retrieve reviews from Pinecone
     try:
-        # Determine what the user wants
         if detect_recent_reviews_intent(user_message):
-            # Get recent reviews for this hotel
             hotel_reviews = get_reviews_by_hotel_id(hotel_id, top_k=20)
-            print(f"📊 Found {len(hotel_reviews)} reviews for hotel_id {hotel_id}")
+            logger.info("Found reviews for hotel", count=len(hotel_reviews), hotel_id=hotel_id)
             
-            # Show recent reviews
             answer = format_recent_reviews(hotel_reviews, limit=3)
             
         elif detect_review_summary_intent(user_message):
-            # Get all reviews for summary
             hotel_reviews = get_reviews_by_hotel_id(hotel_id, top_k=50)
-            print(f"📊 Found {len(hotel_reviews)} reviews for hotel_id {hotel_id}")
+            logger.info("Found reviews for hotel", count=len(hotel_reviews), hotel_id=hotel_id)
             
-            # Generate summary
             answer = generate_review_summary(hotel_reviews, user_message, history_text)
         else:
-            # General review query - use semantic search
             hotel_reviews = retrieve_reviews_by_query(
                 query=user_message,
                 hotel_id=hotel_id,
                 top_k=20
             )
-            print(f"📊 Found {len(hotel_reviews)} relevant reviews for hotel_id {hotel_id}")
+            logger.info("Found relevant reviews for hotel", count=len(hotel_reviews), hotel_id=hotel_id)
             
-            # Generate answer based on reviews
             answer = generate_review_summary(hotel_reviews, user_message, history_text)
         
     except Exception as e:
-        print(f"⚠️ Error retrieving reviews: {e}")
+        logger.error("Error retrieving reviews", error=str(e))
         answer = "I apologize, but I encountered an error while retrieving reviews. Please try again."
     
-    # Update state and history
     msgs = state.get("messages", [])
     msgs.append({"role": "assistant", "content": answer})
     state["messages"] = msgs

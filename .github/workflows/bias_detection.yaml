@@ -71,7 +71,7 @@ jobs:
 
       - name: Upload bias detection results
         if: always()
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: bias-detection-results
           path: evaluation/results/

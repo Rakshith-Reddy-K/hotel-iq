@@ -16,6 +16,7 @@ os.environ['OPENAI_API_KEY'] = os.getenv("OPENAI_API_KEY", "")
 
 # Now this should work
 from main.hotel_bias_detection import HotelBiasDetection
+from main.hotel_failure_detection import HotelFailureDetection
 
 import logging
 logging.basicConfig(level=logging.INFO)
@@ -60,6 +61,22 @@ class BiasDetectionPipeline:
         """Optional: Log to MLflow"""
         pass
 
+class FailureDetectionPipeline:
+    
+    def detect_failure(self):
+        """Run failure detection and send email alerts"""
+        
+        results_path = Path("evaluation/results/bias-summary.json")
+        
+        if not results_path.exists():
+            logger.error("Bias results not found")
+            logger.error("Run stage_bias_detection.py first!")
+            raise FileNotFoundError(f"Missing: {results_path}")
+        
+        detector = HotelFailureDetection()
+        passed = detector.detect()
+        
+        return passed
 
 if __name__ == "__main__":
     try:
@@ -70,6 +87,33 @@ if __name__ == "__main__":
         
         logger.info(f">>>>>> stage {STAGE_NAME} completed <<<<<<\n\n")
         
+        logger.info(f">>>>>> stage {STAGE_NAME} started <<<<<<")
+        
+        pipeline = FailureDetectionPipeline()
+        passed = pipeline.detect_failure()
+        
+        logger.info(f">>>>>> stage {STAGE_NAME} completed <<<<<<\n\n")
+        
+        
+
+        if summary:
+            biased_count = summary.get('biased_hotels', 0)
+            total_count = summary.get('total_hotels', 0)
+            bias_rate_str = summary.get('bias_rate', '0%')
+            bias_rate = float(bias_rate_str.rstrip('%'))
+            
+            if not passed:
+                logger.error(f"FAILED: {bias_rate_str} exceeds threshold%")
+                logger.info("="*70)
+                sys.exit(1)
+            else:
+                logger.info(f"PASSED: {bias_rate_str} ≤ threshold%")
+                logger.info("="*70)
+                sys.exit(0)
+        else:
+            logger.error("No summary generated")
+            sys.exit(1) 
+
     except Exception as e:
         logger.exception(e)
-        raise
+        sys.exit(1)

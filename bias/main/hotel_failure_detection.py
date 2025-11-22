@@ -140,7 +140,7 @@ class HotelFailureDetection:
         body += "The following metrics exceeded acceptable thresholds:\n\n"
         
         for failure in failures:
-            body += f"❌ {failure['metric']}\n"
+            body += f"{failure['metric']}\n"
             body += f"   Current Value: {failure['value']}\n"
             body += f"   Threshold: {failure['threshold']}\n\n"
         
@@ -156,16 +156,15 @@ class HotelFailureDetection:
                 body += f"• {bias_type.replace('_', ' ').title()}: {count}\n"
             body += "\n"
         
-        body += "⚠️ CRITICAL: 95.5% of hotels show bias!\n\n"
+        body += f"CRITICAL: {self.bias_summary['bias_rate']} of hotels show bias!\n\n"
         
         body += "ACTION REQUIRED:\n"
         body += "• Review evaluation/results/hotel-bias-results.csv\n"
         body += "• Check chatbot prompts - seems overly negative\n"
-        body += "• 17 hotels have rating_disparity (negative despite good ratings)\n"
+        rating_disparity_count = self.bias_summary.get('bias_distribution', {}).get('rating_disparity', 0)
+        body += f"• {rating_disparity_count} hotels have rating_disparity (negative despite good ratings)\n"        
         body += "• Investigate why chatbot ignores positive reviews\n"
-        
         self.send_email_gmail(subject, body)
-    
     
     def send_success_alert(self):
         """Send success notification"""

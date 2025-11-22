@@ -1,0 +1,102 @@
+name: Bias Detection
+
+on:
+  pull_request:
+    branches: [production]
+  push:
+    branches: [production]
+
+jobs:
+  check-source-branch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify source is dev
+        run: |
+          if [ "${{ github.head_ref }}" != "dev" ]; then
+            echo "PRs to production must come from dev branch"
+            echo "Current source: ${{ github.head_ref }}"
+            exit 1
+          fi
+          echo "Source branch is dev"
+
+  bias-check:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.10"
+
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Verify responses file exists
+        run: |
+          if [ ! -f "response/chatbot_responses.parquet" ]; then
+            echo "Error: chatbot_responses.parquet not found"
+            exit 1
+          fi
+          echo "Responses file found"
+
+      - name: Run bias detection
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          PINECONE_API_KEY: ${{ secrets.PINECONE_API_KEY }}
+          PINECONE_INDEX_HOST: ${{ secrets.PINECONE_INDEX_HOST }}
+          SENDER_EMAIL: ${{ vars.SENDER_EMAIL }}
+          SENDER_PASSWORD: ${{ secrets.SENDER_PASSWORD }}
+          RECEIVER_EMAIL: ${{ vars.RECEIVER_EMAIL }}
+          SMTP_SERVER: ${{ vars.SMTP_SERVER }}
+          SMTP_PORT: ${{ vars.SMTP_PORT }}
+        run: python pipeline/bias_detection_pipeline.py
+
+      - name: Display results summary
+        if: always()
+        run: |
+          echo "=========================================="
+          echo "BIAS DETECTION RESULTS"
+          echo "=========================================="
+          if [ -f "evaluation/results/bias-summary.json" ]; then
+            cat evaluation/results/bias-summary.json | python -m json.tool
+          else
+            echo "No summary file generated"
+            exit 1
+          fi
+
+      - name: Upload bias detection results
+        if: always()
+        uses: actions/upload-artifact@v3
+        with:
+          name: bias-detection-results
+          path: evaluation/results/
+          retention-days: 30
+
+      - name: Comment PR with results
+        if: always() && github.event_name == 'pull_request'
+        run: |
+          SUMMARY_FILE="evaluation/results/bias-summary.json"
+
+          if [ ! -f "$SUMMARY_FILE" ]; then
+            gh pr comment ${{ github.event.pull_request.number }} \
+              --body "Bias detection failed"
+            exit 0
+          fi
+
+          BIASED=$(python -c "import json; print(json.load(open('$SUMMARY_FILE'))['biased_hotels'])")
+          TOTAL=$(python -c "import json; print(json.load(open('$SUMMARY_FILE'))['total_hotels'])")
+          RATE=$(python -c "import json; print(json.load(open('$SUMMARY_FILE'))['bias_rate'])")
+
+          gh pr comment ${{ github.event.pull_request.number }} --body \
+          "## Bias Detection Results
+
+          **Status**: $BIASED/$TOTAL hotels ($RATE)
+
+          View full results in workflow artifacts."
+        env:
+          GH_TOKEN: ${{ github.token }}

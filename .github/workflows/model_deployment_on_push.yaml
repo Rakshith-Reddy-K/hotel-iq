@@ -182,7 +182,7 @@ jobs:
             --max-instances=${{ env.MAX_INSTANCES }} \
             --concurrency=${{ env.CONCURRENCY }} \
             --set-env-vars="VERSION=${{ steps.tags.outputs.version_tag }},ENV=${{ env.ENVIRONMENT }},REGION=${{ env.REGION }},SERVICE_NAME=${{ env.SERVICE_NAME }},HOTEL_INDEX_NAME=${{ env.HOTEL_INDEX_NAME }},REVIEWS_INDEX_NAME=${{ env.REVIEWS_INDEX_NAME }},GCS_BUCKET_NAME=${{ env.GCS_BUCKET_NAME }},GCP_PROJECT_ID=${{ env.PROJECT_ID }},GCP_INSTANCE_NAME=${{ env.PROJECT_ID }}" \
-            --set-secrets="GOOGLE_API_KEY=GOOGLE_API_KEY:latest,OPENAI_API_KEY=OPENAI_API_KEY:latest,PINECONE_API_KEY=PINECONE_API_KEY:latest" \
+            --set-secrets="GOOGLE_API_KEY=GOOGLE_API_KEY:latest,OPENAI_API_KEY=OPENAI_API_KEY:latest,PINECONE_API_KEY=PINECONE_API_KEY:latest,LANGFUSE_SECRET_KEY=LANGFUSE_SECRET_KEY:latest,LANGFUSE_PUBLIC_KEY=LANGFUSE_PUBLIC_KEY:latest,LANGFUSE_BASE_URL:LANGFUSE_BASE_URL:latest" \
             --quiet
 
       - name: Get service URL

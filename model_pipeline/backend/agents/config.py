@@ -9,7 +9,6 @@ from typing import Any, Dict, List
 from dotenv import load_dotenv
 
 from langchain_openai import ChatOpenAI
-from langchain_huggingface import HuggingFaceEmbeddings
 from logger_config import get_logger
 
 logger = get_logger(__name__)
@@ -55,9 +54,6 @@ llm = ChatOpenAI(
     callbacks=[langfuse_handler],
 )
 
-embeddings = HuggingFaceEmbeddings(
-    model_name="sentence-transformers/all-MiniLM-L6-v2"
-)
 
-logger.info("LLM and embeddings configured.")
+logger.info("LLM configured.")
 

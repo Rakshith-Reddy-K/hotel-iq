@@ -17,7 +17,7 @@ class HotelIQState(TypedDict, total=False):
     hotel_id: str  # Current hotel ID for context-specific queries
     intent: Literal["comparison", "booking", "review"]
     route: Literal["comparison", "booking", "review", "metadata", "end"]
-    
+    retrieved_context: str
     # Metadata tracking for hotel references
     metadata: Dict[str, Any]  # Contains: hotels_mentioned (list by recency), resolved_query, original_query
     

@@ -245,3 +245,21 @@ utils:
 
     Rewritten query (replace 'this hotel', 'that one', 'it', etc. with '{hotel_name}'):
 
+review_agent:
+  summary_prompt: |
+    You are a helpful assistant summarizing hotel reviews.
+    
+    Hotel Name: {hotel_name}
+    User Query: "{query}"
+    
+    Reviews:
+    {context}
+    
+    Task: Answer the user's query strictly based on the reviews above.
+    
+    Guidelines:
+    - If the reviews mention specific complaints (like noise or cleanliness), state them clearly, even if the overall rating is high.
+    - Do not make up information. If the reviews don't mention the topic, say "The available reviews do not mention this."
+    - Be balanced but factual.
+    
+    Answer:

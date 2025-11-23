@@ -7,8 +7,11 @@ Handles hotel review queries and provides review summaries.
 
 from typing import List, Dict
 from langchain_core.documents import Document
+from langchain_core.prompts import ChatPromptTemplate  
+from langchain_core.output_parsers import StrOutputParser
 
 from .state import HotelIQState
+from .config import llm
 from .pinecone_retrieval import retrieve_reviews_by_query, get_reviews_by_hotel_id
 from .utils import get_history, get_limited_history_text
 from .prompt_loader import get_prompts
@@ -78,41 +81,50 @@ def format_recent_reviews(reviews: List[Document], limit: int = 3) -> str:
 
 def generate_review_summary(reviews: List[Document], query: str, history_text: str) -> str:
     """
-    Generate a summary of reviews using LLM.
-    
-    Args:
-        reviews: List of review documents
-        query: User query
-        history_text: Conversation history
-        
-    Returns:
-        Generated summary
+    Generate a summary of reviews using LLM with rating awareness to reduce bias.
     """
     if not reviews:
         return "No reviews found for this hotel."
     
+    # --- NEW LOGIC: Calculate stats for the prompt ---
+    ratings = []
     review_texts = []
-    for review in reviews[:20]:  # Limit to 20 reviews for summary
-        rating = review.metadata.get("rating", "N/A")
-        review_texts.append(f"Rating: {rating}/5\n{review.page_content}")
+    for review in reviews[:20]:  # Limit to 20 reviews
+        r_val = review.metadata.get("rating") or review.metadata.get("overall_rating")
+        
+        # Try to parse rating
+        if r_val and str(r_val) != "N/A":
+            try:
+                ratings.append(float(r_val))
+            except ValueError:
+                pass
+        
+        review_texts.append(f"Rating: {r_val}/5\n{review.page_content}")
     
+    avg_rating = f"{sum(ratings)/len(ratings):.1f}" if ratings else "N/A"
     context = "\n\n---\n\n".join(review_texts)
+
+    # --- NEW LOGIC: Use specific prompt chain instead of comparison_chain ---
+    prompts = get_prompts()
+    prompt_text = prompts.get("review_agent.summary_prompt")
     
-    from .utils import comparison_chain
-    
-    summary_prompt = f"Based on the following hotel reviews, {query}\n\nReviews:\n{context}"
+    # Fallback if YAML isn't updated yet
+    if not prompt_text:
+        prompt_text = "Summarize these reviews ({avg_rating}/5 avg): {context}\nQuery: {query}"
+
+    summary_chain = ChatPromptTemplate.from_template(prompt_text) | llm | StrOutputParser()
     
     try:
-        summary = comparison_chain.invoke({
-            "history": history_text,
+        summary = summary_chain.invoke({
+            "hotel_name": "this hotel", 
+            "avg_rating": avg_rating,
             "context": context,
-            "question": query
+            "query": query
         })
         return summary
     except Exception as e:
         logger.error("Error generating review summary", error=str(e))
-        return "I apologize, but I encountered an error while summarizing the reviews. Please try again."
-
+        return "I apologize, but I encountered an error while summarizing the reviews."
 
 from .langfuse_tracking import track_agent
 
@@ -142,12 +154,13 @@ async def review_node(state: HotelIQState) -> HotelIQState:
             logger.info("Found reviews for hotel", count=len(hotel_reviews), hotel_id=hotel_id)
             
             answer = format_recent_reviews(hotel_reviews, limit=3)
-            
+            context_text = "\n".join([d.page_content for d in hotel_reviews[:3]])
         elif detect_review_summary_intent(user_message):
             hotel_reviews = get_reviews_by_hotel_id(hotel_id, top_k=50)
             logger.info("Found reviews for hotel", count=len(hotel_reviews), hotel_id=hotel_id)
             
             answer = generate_review_summary(hotel_reviews, user_message, history_text)
+            context_text = "\n".join([d.page_content for d in hotel_reviews[:20]])
         else:
             hotel_reviews = retrieve_reviews_by_query(
                 query=user_message,
@@ -157,7 +170,7 @@ async def review_node(state: HotelIQState) -> HotelIQState:
             logger.info("Found relevant reviews for hotel", count=len(hotel_reviews), hotel_id=hotel_id)
             
             answer = generate_review_summary(hotel_reviews, user_message, history_text)
-        
+            context_text = "\n".join([d.page_content for d in hotel_reviews[:20]])
     except Exception as e:
         logger.error("Error retrieving reviews", error=str(e))
         answer = "I apologize, but I encountered an error while retrieving reviews. Please try again."
@@ -165,6 +178,8 @@ async def review_node(state: HotelIQState) -> HotelIQState:
     msgs = state.get("messages", [])
     msgs.append({"role": "assistant", "content": answer})
     state["messages"] = msgs
+    
+    state["retrieved_context"] = context_text
     
     history_obj.add_user_message(user_message)
     history_obj.add_ai_message(answer)

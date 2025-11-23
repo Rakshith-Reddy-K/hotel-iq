@@ -4,6 +4,8 @@ langchain
 langchain-community
 langchain-openai
 langchain-core
+ragas
+datasets
 sentence-transformers
 python-dotenv
 langgraph

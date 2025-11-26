@@ -14,7 +14,7 @@ from langchain_core.output_parsers import StrOutputParser
 from langchain_core.chat_history import InMemoryChatMessageHistory
 
 from .config import (
-    llm, embeddings, HOTELS_PATH, REVIEWS_PATH
+    llm, HOTELS_PATH, REVIEWS_PATH
 )
 from .prompt_loader import get_prompts
 from logger_config import get_logger

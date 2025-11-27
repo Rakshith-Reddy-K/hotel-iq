@@ -46,9 +46,114 @@ jobs:
 
           echo "Production branch is up to date with dev"
 
+  run-tests:
+    name: Run Backend Tests
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: ./model_pipeline/backend
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.10"
+
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run tests
+        continue-on-error: true
+        id: pytest
+        env:
+          GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+          PINECONE_API_KEY: ${{ secrets.PINECONE_API_KEY }}
+          LANGFUSE_PUBLIC_KEY: ${{ secrets.LANGFUSE_PUBLIC_KEY }}
+        run: |
+          pytest tests/test_ci.py \
+            -v \
+            --tb=short \
+            --cov=. \
+            --cov-report=xml \
+            --cov-report=term-missing \
+            | tee pytest-output.txt
+
+          echo "exit_code=$?" >> $GITHUB_OUTPUT
+
+      - name: Generate summary
+        if: always()
+        id: summary
+        run: |
+          # Count results
+          TOTAL=$(grep -oP '\d+(?= passed)' pytest-output.txt || echo "0")
+          FAILED=$(grep -oP '\d+(?= failed)' pytest-output.txt || echo "0")
+          SKIPPED=$(grep -oP '\d+(?= skipped)' pytest-output.txt || echo "0")
+          PASSED=$((TOTAL - FAILED - SKIPPED))
+
+          # Get coverage
+          COVERAGE=$(grep -oP '\d+%' pytest-output.txt | tail -1 || echo "0%")
+
+          # Get duration
+          DURATION=$(grep -oP '[\d.]+s' pytest-output.txt | tail -1 || echo "0s")
+
+          # Create comment
+          if [ "$FAILED" = "0" ]; then
+            STATUS="✅ All Tests Passed"
+            EMOJI="🎉"
+          else
+            STATUS="❌ Tests Failed"
+            EMOJI="⚠️"
+          fi
+
+          # Build comment for PR
+          COMMENT="### ${EMOJI} Backend Tests
+
+          | Status | Passed | Failed | Skipped | Coverage | Duration |
+          |--------|--------|--------|---------|----------|----------|
+          | ${STATUS} | ✅ ${PASSED} | ❌ ${FAILED} | ⏭️ ${SKIPPED} | 📊 ${COVERAGE} | ⏱️ ${DURATION} |"
+
+          # ======================================
+          # LOG TO JOB RUN (appears in Actions log)
+          # ======================================
+          echo ""
+          echo "========================================="
+          echo "${EMOJI} Backend Test Results"
+          echo "========================================="
+          echo "Status:   ${STATUS}"
+          echo "Passed:   ${PASSED}"
+          echo "Failed:   ${FAILED}"
+          echo "Skipped:  ${SKIPPED}"
+          echo "Coverage: ${COVERAGE}"
+          echo "Duration: ${DURATION}"
+          echo "========================================="
+          echo ""
+
+          # ======================================
+          # ADD TO GITHUB STEP SUMMARY (appears in job summary page)
+          # ======================================
+          echo "### ${EMOJI} Backend Tests" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Status | Passed | Failed | Skipped | Coverage | Duration |" >> $GITHUB_STEP_SUMMARY
+          echo "|--------|--------|--------|---------|----------|----------|" >> $GITHUB_STEP_SUMMARY
+          echo "| ${STATUS} | ✅ ${PASSED} | ❌ ${FAILED} | ⏭️ ${SKIPPED} | 📊 ${COVERAGE} | ⏱️ ${DURATION} |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          # ======================================
+          # SAVE TO OUTPUT (for PR comment)
+          # ======================================
+          echo "comment<<EOF" >> $GITHUB_OUTPUT
+          echo "$COMMENT" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
   commit-bias-results:
     name: Commit Bias Detection Results
-    needs: check-branch-sync
+    needs: [check-branch-sync, run-tests]
     runs-on: ubuntu-latest
     if: "!contains(github.event.head_commit.message, '[skip ci]')"
 
@@ -116,7 +221,7 @@ jobs:
 
   build-and-deploy:
     name: Build and Deploy
-    needs: [check-branch-sync, commit-bias-results]
+    needs: [check-branch-sync, run-tests, commit-bias-results]
     runs-on: ubuntu-latest
     permissions:
       contents: read

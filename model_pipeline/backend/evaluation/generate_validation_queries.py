@@ -3,8 +3,14 @@ import uuid
 import os
 import yaml
 
+script_dir = os.path.dirname(os.path.abspath(__file__))
+
+base_path = os.path.join(script_dir)
 # Load config 
-cfg_path = "model_pipeline/backend/evaluation/config_eval.yaml"
+cfg_path = os.path.join(base_path, "config_eval.yaml")
+output_dir = os.path.join(base_path, "testsets")
+output_path = os.path.join(output_dir, "hotel_base_validation.parquet")
+
 base_asin = "111418"
 hotel_name = "Hilton Boston Park Plaza"  # <--- Define the name here
 file_hash = str(uuid.uuid4())[:8]
@@ -51,8 +57,7 @@ for i, q in enumerate(comparison + review + edge):
         "evolution_type": "comparison" if i < 5 else ("review" if i < 10 else "edge")
     })
 
-os.makedirs("model_pipeline/backend/evaluation/testsets", exist_ok=True)
+os.makedirs(output_dir, exist_ok=True)
 df = pd.DataFrame(rows)
-output_path = "model_pipeline/backend/evaluation/testsets/hotel_base_validation.parquet"
 df.to_parquet(output_path, index=False)
 print(f"Wrote validation queries to {output_path}")

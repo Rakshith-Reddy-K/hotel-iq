@@ -5,6 +5,10 @@ import uuid
 import pandas as pd
 import yaml
 from pathlib import Path
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
 
 # --- PATH SETUP ---
 #Get the directory of this script: .../backend/evaluation

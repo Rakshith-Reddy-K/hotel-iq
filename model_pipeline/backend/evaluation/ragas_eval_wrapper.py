@@ -20,16 +20,16 @@ OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 if not OPENAI_API_KEY:
     logger.warning("OPENAI_API_KEY not found in environment variables.")
 
-# Initialize LLM Judge
+# Initialize LLM Judge - use environment variables for model and temperature
 llm = ChatOpenAI(
     model="gpt-4o-mini",
     temperature=0.0,
     openai_api_key=OPENAI_API_KEY,
 )
 
-# Initialize Embeddings 
+# Initialize Embeddings - use environment variable for embedding model
 embeddings = OpenAIEmbeddings(
-    model="text-embedding-3-large",  # 3072 dimensions
+    model="text-embedding-3-large",
     openai_api_key=OPENAI_API_KEY
 )
 

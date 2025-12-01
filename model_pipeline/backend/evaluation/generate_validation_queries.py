@@ -2,18 +2,16 @@ import pandas as pd
 import uuid
 import os
 import yaml
+from dotenv import load_dotenv
 
-script_dir = os.path.dirname(os.path.abspath(__file__))
+# Load environment variables
+load_dotenv()
 
-base_path = os.path.join(script_dir)
 # Load config 
-cfg_path = os.path.join(base_path, "config_eval.yaml")
-output_dir = os.path.join(base_path, "testsets")
-output_path = os.path.join(output_dir, "hotel_base_validation.parquet")
-
-base_asin = "111418"
-hotel_name = "Hilton Boston Park Plaza"  # <--- Define the name here
-file_hash = str(uuid.uuid4())[:8]
+cfg_path = os.getenv("EVAL_CONFIG_PATH", "model_pipeline/backend/evaluation/config_eval.yaml")
+base_asin = os.getenv("EVAL_BASE_ASIN", "111418")
+hotel_name = os.getenv("EVAL_HOTEL_NAME", "Hilton Boston Park Plaza")
+file_hash = os.getenv("EVAL_FILE_HASH", str(uuid.uuid4())[:8])
 
 if os.path.exists(cfg_path):
     import yaml as _yaml
@@ -57,7 +55,9 @@ for i, q in enumerate(comparison + review + edge):
         "evolution_type": "comparison" if i < 5 else ("review" if i < 10 else "edge")
     })
 
+output_dir = os.getenv("EVAL_TESTSETS_DIR", "model_pipeline/backend/evaluation/testsets")
 os.makedirs(output_dir, exist_ok=True)
 df = pd.DataFrame(rows)
+output_path = os.path.join(output_dir, os.getenv("EVAL_OUTPUT_FILENAME", "hotel_base_validation.parquet"))
 df.to_parquet(output_path, index=False)
 print(f"Wrote validation queries to {output_path}")

@@ -98,12 +98,10 @@ def generate_review_summary(reviews: List[Document], query: str, history_text: s
     
     context = "\n\n---\n\n".join(review_texts)
     
-    from .utils import comparison_chain
-    
-    summary_prompt = f"Based on the following hotel reviews, {query}\n\nReviews:\n{context}"
+    from .utils import review_chain
     
     try:
-        summary = comparison_chain.invoke({
+        summary = review_chain.invoke({
             "history": history_text,
             "context": context,
             "question": query
@@ -152,7 +150,7 @@ async def review_node(state: HotelIQState) -> HotelIQState:
             hotel_reviews = retrieve_reviews_by_query(
                 query=user_message,
                 hotel_id=hotel_id,
-                top_k=20
+                top_k=50
             )
             logger.info("Found relevant reviews for hotel", count=len(hotel_reviews), hotel_id=hotel_id)
             

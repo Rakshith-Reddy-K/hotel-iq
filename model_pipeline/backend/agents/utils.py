@@ -390,6 +390,16 @@ def _get_comparison_prompt():
     return ChatPromptTemplate.from_template(prompt_text)
 
 
+def _get_review_prompt():
+    """Load review prompt from YAML file."""
+    prompts = get_prompts()
+    prompt_text = prompts.get("review_agent.main_prompt")
+    return ChatPromptTemplate.from_template(prompt_text)
+
+
 comparison_prompt = _get_comparison_prompt()
 comparison_chain = comparison_prompt | llm | StrOutputParser()
+
+review_prompt = _get_review_prompt()
+review_chain = review_prompt | llm | StrOutputParser()
 

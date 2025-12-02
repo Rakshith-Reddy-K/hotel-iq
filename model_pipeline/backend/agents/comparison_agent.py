@@ -162,6 +162,14 @@ async def comparison_node(state: HotelIQState) -> HotelIQState:
                 if hotel_info.get('additional_info'):
                     context_parts.append(f"\nAdditional Information: {hotel_info.get('additional_info')}")
                 
+                # Add amenities information
+                if hotel_info.get('amenities'):
+                    context_parts.append(f"\nAmenities:{hotel_info.get('amenities')}")
+                
+                # Add policies information
+                if hotel_info.get('policies'):
+                    context_parts.append(f"\nPolicies:\n{hotel_info.get('policies')}")
+                
                 context_text = "\n".join(context_parts)
                 
                 logger.info("Using CSV data for hotel", hotel_id=hotel_id)

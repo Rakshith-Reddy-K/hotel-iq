@@ -10,3 +10,9 @@ openpyxl
 jsonschema
 colorlog
 google-genai
+asyncpg
+fastapi
+uvicorn
+openai
+langchain-openai
+pydantic

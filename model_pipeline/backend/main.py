@@ -6,23 +6,25 @@ FastAPI application for the HotelIQ hotel comparison and booking chatbot.
 """
 
 import os
-from dotenv import load_dotenv  # ⬅️ add this
+from dotenv import load_dotenv 
 
 # Load .env from the backend folder
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 load_dotenv(os.path.join(BASE_DIR, ".env"))
 
+import asyncpg
 import uuid
 import logging
 from pathlib import Path
 from typing import List, Optional
 from dataclasses import dataclass
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException, Depends 
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
+from contextlib import asynccontextmanager
 
 from agents import agent_graph
 from agents.state import HotelIQState
@@ -30,6 +32,7 @@ from agents.validation import sanitize_user_input
 import bucket_util
 import path as path_util
 
+from agents.concierge_agent import process_guest_message
 from logger_config import configure_logger, get_logger
 import json
 from datetime import datetime
@@ -89,6 +92,16 @@ if not os.getenv('GOOGLE_APPLICATION_CREDENTIALS'):
         logger.info("GCP credentials loaded", path=str(credentials_path))
     else:
         logger.warning("GCP credentials file not found", path=str(credentials_path))
+
+# ======================================================
+# CONFIGURATION
+# ======================================================
+
+# Database Config (For Concierge/Admin)
+DB_DSN = f"postgresql://{os.getenv('CLOUD_DB_USER')}:{os.getenv('CLOUD_DB_PASSWORD')}@{os.getenv('CLOUD_DB_HOST')}:{os.getenv('CLOUD_DB_PORT')}/{os.getenv('CLOUD_DB_NAME')}"
+
+BASE_DIR = Path(__file__).resolve().parent.parent
+FRONTEND_DIR = BASE_DIR / "frontend"
 
 # ======================================================
 # DATA INITIALIZATION
@@ -224,10 +237,23 @@ async def readiness_check():
 # Add startup event to download data
 @app.on_event("startup")
 async def startup_event():
-    """Execute on application startup."""
+    """Execute on application startup: Download data & Connect to DB."""
     logger.info("Starting HotelIQ API...")
     download_processed_data()
+    try:
+        app.state.pool = await asyncpg.create_pool(DB_DSN)
+        logger.info(" Connected to Database (AsyncPG)")
+    except Exception as e:
+        logger.error(f" DB Connection Failed: {e}")
+        app.state.pool = None
     logger.info("Startup complete!")
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    """Close database connection on shutdown."""
+    if hasattr(app.state, 'pool') and app.state.pool:
+        await app.state.pool.close()
+        logger.info("🛑 Database connection closed")
 
 # CORS configuration
 app.add_middleware(
@@ -366,6 +392,19 @@ logger.info("ChatService ready.")
 # ======================================================
 # API ROUTES
 # ======================================================
+class GuestVerifyRequest(BaseModel):
+    roomNumber: str
+    lastName: str
+
+class GuestChatRequest(BaseModel):
+    message: str
+    roomNumber: str
+    guestName: str
+    bookingId: int
+
+class RequestUpdate(BaseModel):
+    status: str
+    assigned_to: Optional[str] = None
 
 class ChatRequest(BaseModel):
     """Request model for chat endpoint with validation."""
@@ -426,6 +465,123 @@ async def send_message(request: ChatRequest):
         followup_suggestions=res.followup_suggestions,
     )
 
+
+# --- CONCIERGE: GUEST VERIFICATION ---
+@app.post("/api/guest/verify")
+async def guest_verify(req: GuestVerifyRequest):
+    """Verify guest credentials against bookings table."""
+    if not hasattr(app.state, 'pool') or not app.state.pool:
+        raise HTTPException(status_code=503, detail="Database not ready")
+
+    async with app.state.pool.acquire() as conn:
+        row = await conn.fetchrow(
+            """
+            SELECT id, room_number, guest_first_name, guest_last_name, check_out_date 
+            FROM bookings 
+            WHERE room_number = $1 AND LOWER(guest_last_name) = LOWER($2)
+            """, 
+            req.roomNumber, req.lastName
+        )
+
+        if row:
+            return {
+                "bookingId": row['id'],
+                "roomNumber": row['room_number'],
+                "guestName": f"{row['guest_first_name']} {row['guest_last_name']}",
+                "checkoutDate": str(row['check_out_date'])
+            }
+        else:
+            return {"error": "Invalid room number or last name."}
+
+# --- CONCIERGE: GUEST CHAT ---
+@app.post("/api/chat/guest")
+async def guest_chat(req: GuestChatRequest):
+    """Concierge chat for checked-in guests."""
+    # 1. Process with Concierge Agent
+    agent_result = await process_guest_message(req.message, req.guestName, req.roomNumber)
+    
+    # 2. Log to Database
+    if hasattr(app.state, 'pool') and app.state.pool:
+        async with app.state.pool.acquire() as conn:
+            request_id = await conn.fetchval(
+                """
+                INSERT INTO guest_requests 
+                (booking_id, room_number, guest_name, message_text, bot_response, request_type, status, priority)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+                RETURNING id
+                """,
+                req.bookingId, req.roomNumber, req.guestName, 
+                req.message, agent_result['response'], 
+                agent_result['request_type'],
+                'pending' if agent_result['is_service_request'] else 'resolved', 
+                agent_result['priority']
+            )
+            
+            return {
+                "response": agent_result['response'],
+                "requestId": request_id,
+                "type": agent_result['request_type'],
+                "status": "pending" if agent_result['is_service_request'] else "resolved"
+            }
+    
+    return {"response": agent_result['response'], "error": "Logged locally (DB unavailable)"}
+
+# --- ADMIN: FETCH REQUESTS ---
+@app.get("/api/admin/requests")
+async def get_admin_requests(status: Optional[str] = None):
+    """Fetch requests for the Admin Dashboard."""
+    if not hasattr(app.state, 'pool') or not app.state.pool:
+        raise HTTPException(status_code=503, detail="Database not ready")
+        
+    async with app.state.pool.acquire() as conn:
+        if status:
+            rows = await conn.fetch("SELECT * FROM guest_requests WHERE status = $1 ORDER BY created_at DESC", status)
+        else:
+            rows = await conn.fetch("SELECT * FROM guest_requests ORDER BY created_at DESC LIMIT 50")
+        return [dict(row) for row in rows]
+
+# --- ADMIN: UPDATE REQUEST ---
+@app.patch("/api/admin/requests/{request_id}")
+async def update_request(request_id: int, update: RequestUpdate):
+    """Update request status (e.g., mark as resolved)."""
+    if not hasattr(app.state, 'pool') or not app.state.pool:
+        raise HTTPException(status_code=503, detail="Database not ready")
+
+    from datetime import datetime
+    async with app.state.pool.acquire() as conn:
+        await conn.execute(
+            "UPDATE guest_requests SET status = $1, assigned_to = $2, resolved_at = $3 WHERE id = $4",
+            update.status, update.assigned_to, 
+            datetime.now() if update.status == 'resolved' else None,
+            request_id
+        )
+    return {"status": "success", "id": request_id}
+
+@app.get("/api/admin/stats")
+async def get_admin_stats():
+    """Fetch statistics for the Admin Dashboard."""
+    if not hasattr(app.state, 'pool') or not app.state.pool:
+        raise HTTPException(status_code=503, detail="Database not ready")
+
+    async with app.state.pool.acquire() as conn:
+        # Get total pending vs resolved
+        status_counts = await conn.fetch(
+            "SELECT status, COUNT(*) as count FROM guest_requests GROUP BY status"
+        )
+        
+        # Get average response time (mock logic for now as we need 'resolved_at' populated)
+        avg_time = await conn.fetchval(
+            "SELECT AVG(EXTRACT(EPOCH FROM (resolved_at - created_at))/60)::int FROM guest_requests WHERE status = 'resolved'"
+        )
+
+        stats = {row['status']: row['count'] for row in status_counts}
+        
+        return {
+            "pending_requests": stats.get("pending", 0),
+            "resolved_requests": stats.get("resolved", 0),
+            "avg_response_time": avg_time or 0,
+            "total_requests": sum(stats.values())
+        }
 
 logger.info("FastAPI app created.")
 

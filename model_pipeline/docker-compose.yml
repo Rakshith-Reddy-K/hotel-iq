@@ -1,4 +1,4 @@
-version: '3.8'
+version: "3.8"
 
 services:
   # HotelIQ Backend API
@@ -24,6 +24,11 @@ services:
       # Data Configuration
       - CITY=${CITY:-boston}
       - ENVIRONMENT=${ENVIRONMENT:-development}
+      - CLOUD_DB_HOST=${CLOUD_DB_HOST}
+      - CLOUD_DB_PORT=${CLOUD_DB_PORT:-5432}
+      - CLOUD_DB_NAME=${CLOUD_DB_NAME}
+      - CLOUD_DB_USER=${CLOUD_DB_USER}
+      - CLOUD_DB_PASSWORD=${CLOUD_DB_PASSWORD}
     volumes:
       # Mount code for hot reload in development
       - ./backend:/app
@@ -94,4 +99,3 @@ volumes:
 networks:
   hoteliq-network:
     driver: bridge
-

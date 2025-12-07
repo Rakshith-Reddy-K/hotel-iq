@@ -583,6 +583,11 @@ async def get_admin_stats():
             "total_requests": sum(stats.values())
         }
 
+@app.get("/admin")
+async def admin_page():
+    """Serve the admin dashboard HTML page."""
+    return FileResponse(FRONTEND_DIR / "admin.html")
+    
 logger.info("FastAPI app created.")
 
 @app.post("/api/v1/chat/save")

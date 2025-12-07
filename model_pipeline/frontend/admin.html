@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>HotelIQ Admin</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-100 p-8">
+    <div class="max-w-7xl mx-auto">
+        <h1 class="text-3xl font-bold text-gray-800 mb-8">Concierge Dashboard</h1>
+
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+            <div class="bg-white p-6 rounded-lg shadow">
+                <div class="text-gray-500 text-sm">Pending</div>
+                <div class="text-3xl font-bold text-orange-600" id="stat-pending">0</div>
+            </div>
+            <div class="bg-white p-6 rounded-lg shadow">
+                <div class="text-gray-500 text-sm">Resolved</div>
+                <div class="text-3xl font-bold text-green-600" id="stat-resolved">0</div>
+            </div>
+            <div class="bg-white p-6 rounded-lg shadow">
+                <div class="text-gray-500 text-sm">Avg Time (min)</div>
+                <div class="text-3xl font-bold text-blue-600" id="stat-time">0</div>
+            </div>
+            <div class="bg-white p-6 rounded-lg shadow">
+                <div class="text-gray-500 text-sm">Total</div>
+                <div class="text-3xl font-bold text-gray-800" id="stat-total">0</div>
+            </div>
+        </div>
+
+        <div class="bg-white rounded-lg shadow overflow-hidden">
+            <div class="px-6 py-4 border-b flex justify-between items-center">
+                <h2 class="text-lg font-semibold">Live Requests</h2>
+                <button onclick="fetchData()" class="text-blue-600 text-sm hover:underline">Refresh</button>
+            </div>
+            <table class="min-w-full divide-y divide-gray-200">
+                <thead class="bg-gray-50">
+                    <tr>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Room</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Guest</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Request</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Type</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Action</th>
+                    </tr>
+                </thead>
+                <tbody class="bg-white divide-y divide-gray-200" id="requests-table">
+                    </tbody>
+            </table>
+        </div>
+    </div>
+
+    <script>
+        async function fetchData() {
+            // 1. Stats
+            try {
+                const stats = await (await fetch('/api/admin/stats')).json();
+                document.getElementById('stat-pending').innerText = stats.pending_requests;
+                document.getElementById('stat-resolved').innerText = stats.resolved_requests;
+                document.getElementById('stat-time').innerText = stats.avg_response_time || 0;
+                document.getElementById('stat-total').innerText = stats.total_requests;
+            } catch(e) { console.log(e); }
+
+            // 2. Requests
+            try {
+                const reqs = await (await fetch('/api/admin/requests')).json();
+                const tbody = document.getElementById('requests-table');
+                tbody.innerHTML = '';
+                
+                reqs.forEach(req => {
+                    const isPending = req.status === 'pending';
+                    const btn = isPending 
+                        ? `<button onclick="resolve(${req.id})" class="text-green-600 font-bold hover:underline">✓ Resolve</button>` 
+                        : `<span class="text-gray-400">Done</span>`;
+                    
+                    const row = `
+                        <tr>
+                            <td class="px-6 py-4 text-sm font-medium">${req.room_number}</td>
+                            <td class="px-6 py-4 text-sm text-gray-500">${req.guest_name}</td>
+                            <td class="px-6 py-4 text-sm text-gray-500 truncate max-w-xs" title="${req.message_text}">${req.message_text}</td>
+                            <td class="px-6 py-4 text-sm text-gray-500 capitalize">${req.request_type}</td>
+                            <td class="px-6 py-4 text-sm">
+                                <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${isPending ? 'bg-yellow-100 text-yellow-800' : 'bg-green-100 text-green-800'}">
+                                    ${req.status}
+                                </span>
+                            </td>
+                            <td class="px-6 py-4 text-sm font-medium">${btn}</td>
+                        </tr>
+                    `;
+                    tbody.innerHTML += row;
+                });
+            } catch(e) { console.log(e); }
+        }
+
+        async function resolve(id) {
+            if(!confirm("Mark resolved?")) return;
+            await fetch(`/api/admin/requests/${id}`, {
+                method: 'PATCH',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({status: 'resolved', assigned_to: 'Manager'})
+            });
+            fetchData();
+        }
+
+        // Auto Refresh
+        fetchData();
+        setInterval(fetchData, 5000);
+    </script>
+</body>
+</html>

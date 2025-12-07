@@ -1,0 +1,11 @@
+pinecone:
+  index_name: "hotel-iq-index"
+  reviews_namespace_template: "{parent_asin}"   # will use parent_asin as namespace
+testset:
+  path: "model_pipeline/backend/evaluation/testsets/hotel_base_validation.parquet"
+  base_parent_asin: "111418"
+  file_hash: "validation-filehash-001"
+evaluation:
+  results_path: "model_pipeline/backend/evaluation/results/hotel_base_validation_results.parquet"
+  top_k: 5
+  save_context: true

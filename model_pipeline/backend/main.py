@@ -25,6 +25,11 @@ import bucket_util
 import path as path_util
 
 from logger_config import configure_logger, get_logger
+import json
+from datetime import datetime
+from fastapi import HTTPException, status
+from typing import Dict, Any
+from sql.queries import list_tables
 
 # Setup logging
 configure_logger()
@@ -33,6 +38,40 @@ logger = get_logger(__name__)
 # ======================================================
 # GCP CREDENTIALS SETUP
 # ======================================================
+
+class MessageModel(BaseModel):
+    """Model for a chat message."""
+    id: int
+    from_: str = Field(..., alias="from")
+    text: str
+    timestamp: str
+
+    class Config:
+        populate_by_name = True
+
+
+class SaveConversationRequest(BaseModel):
+    """Request model for saving conversation."""
+    threadId: str = Field(..., max_length=200)
+    userId: str = Field(..., max_length=100)
+    hotelId: str = Field(..., max_length=50)
+    messages: List[MessageModel]
+
+
+class ConversationResponse(BaseModel):
+    """Response model for conversation retrieval."""
+    threadId: str
+    userId: str
+    hotelId: str
+    messages: List[Dict[str, Any]]
+    lastUpdated: str
+
+
+class DeleteConversationRequest(BaseModel):
+    """Request model for deleting conversation."""
+    userId: str = Field(..., max_length=100)
+    hotelId: str = Field(..., max_length=50)
+
 
 # Set GCP credentials path if not already set
 if not os.getenv('GOOGLE_APPLICATION_CREDENTIALS'):
@@ -365,6 +404,248 @@ async def send_message(request: ChatRequest):
 
 logger.info("FastAPI app created.")
 
+@app.post("/api/v1/chat/save")
+async def save_conversation(request: SaveConversationRequest):
+    """
+    Save chat conversation to Google Cloud Storage.
+    
+    Stores the conversation as JSON in GCS with the structure:
+    conversations/{hotelId}/{userId}/{threadId}.json
+    """
+    try:
+        # Sanitize inputs
+        thread_id = sanitize_user_input(request.threadId)
+        user_id = sanitize_user_input(request.userId)
+        hotel_id = sanitize_user_input(request.hotelId)
+        
+        # Prepare conversation data
+        conversation_data = {
+            "threadId": thread_id,
+            "userId": user_id,
+            "hotelId": hotel_id,
+            "messages": [msg.dict(by_alias=True) for msg in request.messages],
+            "lastUpdated": datetime.utcnow().isoformat(),
+        }
+        
+        # Create blob path
+        blob_name = f"conversations/{hotel_id}/{user_id}/{thread_id}.json"
+        
+        # Save to temporary file
+        temp_dir = Path("./temp")
+        temp_dir.mkdir(exist_ok=True)
+        temp_file = temp_dir / f"{thread_id}.json"
+        
+        with open(temp_file, 'w') as f:
+            json.dump(conversation_data, f, indent=2)
+        
+        # Upload to GCS
+        bucket_util.upload_file_to_gcs(str(temp_file), blob_name)
+        
+        # Clean up temp file
+        temp_file.unlink()
+        
+        logger.info("Conversation saved", thread_id=thread_id, user_id=user_id)
+        
+        return {
+            "status": "success",
+            "message": "Conversation saved successfully",
+            "threadId": thread_id,
+            "blobPath": blob_name
+        }
+        
+    except Exception as e:
+        logger.error("Error saving conversation", error=str(e))
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to save conversation: {str(e)}"
+        )
+
+
+@app.get("/api/v1/chat/conversation/{thread_id}", response_model=ConversationResponse)
+async def get_conversation(
+    thread_id: str,
+    userId: str,
+    hotelId: str
+):
+    """
+    Retrieve a chat conversation from Google Cloud Storage.
+    
+    Args:
+        thread_id: Thread identifier
+        userId: User identifier (query param)
+        hotelId: Hotel identifier (query param)
+    
+    Returns:
+        Conversation data including all messages
+    """
+    try:
+        # Sanitize inputs
+        thread_id = sanitize_user_input(thread_id)
+        user_id = sanitize_user_input(userId)
+        hotel_id = sanitize_user_input(hotelId)
+        
+        # Create blob path
+        blob_name = f"conversations/{hotel_id}/{user_id}/{thread_id}.json"
+        
+        # Download from GCS
+        temp_dir = Path("./temp")
+        temp_dir.mkdir(exist_ok=True)
+        temp_file = temp_dir / f"{thread_id}_download.json"
+        
+        try:
+            bucket_util.download_file_from_gcs(blob_name, str(temp_file))
+        except FileNotFoundError:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Conversation not found"
+            )
+        
+        # Read conversation data
+        with open(temp_file, 'r') as f:
+            conversation_data = json.load(f)
+        
+        # Clean up temp file
+        temp_file.unlink()
+        
+        logger.info("Conversation retrieved", thread_id=thread_id, user_id=user_id)
+        
+        return ConversationResponse(**conversation_data)
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("Error retrieving conversation", error=str(e))
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to retrieve conversation: {str(e)}"
+        )
+
+
+@app.delete("/api/v1/chat/conversation/{thread_id}")
+async def delete_conversation(
+    thread_id: str,
+    request: DeleteConversationRequest
+):
+    """
+    Delete a chat conversation from Google Cloud Storage.
+    
+    Args:
+        thread_id: Thread identifier
+        request: Contains userId and hotelId
+    
+    Returns:
+        Success status
+    """
+    try:
+        # Sanitize inputs
+        thread_id = sanitize_user_input(thread_id)
+        user_id = sanitize_user_input(request.userId)
+        hotel_id = sanitize_user_input(request.hotelId)
+        
+        # Create blob path
+        blob_name = f"conversations/{hotel_id}/{user_id}/{thread_id}.json"
+        
+        # Delete from GCS
+        bucket = bucket_util.get_bucket()
+        blob = bucket.blob(blob_name)
+        
+        if not blob.exists():
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Conversation not found"
+            )
+        
+        blob.delete()
+        
+        logger.info("Conversation deleted", thread_id=thread_id, user_id=user_id)
+        
+        return {
+            "status": "success",
+            "message": "Conversation deleted successfully",
+            "threadId": thread_id
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("Error deleting conversation", error=str(e))
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to delete conversation: {str(e)}"
+        )
+
+
+@app.get("/api/v1/chat/conversations/list")
+async def list_conversations(
+    userId: str,
+    hotelId: str,
+    limit: int = 50
+):
+    """
+    List all conversations for a user at a specific hotel.
+    
+    Args:
+        userId: User identifier
+        hotelId: Hotel identifier
+        limit: Maximum number of conversations to return (default: 50)
+    
+    Returns:
+        List of conversation metadata
+    """
+    try:
+        # Sanitize inputs
+        user_id = sanitize_user_input(userId)
+        hotel_id = sanitize_user_input(hotelId)
+        
+        # Create prefix for listing
+        prefix = f"conversations/{hotel_id}/{user_id}/"
+        
+        # List blobs
+        bucket = bucket_util.get_bucket()
+        blobs = list(bucket.list_blobs(prefix=prefix, max_results=limit))
+        
+        conversations = []
+        for blob in blobs:
+            # Extract thread_id from blob name
+            thread_id = blob.name.split('/')[-1].replace('.json', '')
+            
+            conversations.append({
+                "threadId": thread_id,
+                "lastModified": blob.updated.isoformat() if blob.updated else None,
+                "size": blob.size
+            })
+        
+        logger.info("Listed conversations", user_id=user_id, count=len(conversations))
+        
+        return {
+            "status": "success",
+            "conversations": conversations,
+            "count": len(conversations)
+        }
+        
+    except Exception as e:
+        logger.error("Error listing conversations", error=str(e))
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to list conversations: {str(e)}"
+        )
+
+
+@app.get("/api/v1/dbtest")
+async def test_db_connection():
+    try:
+       tables = list_tables()
+       return {
+            "status": "success",
+            "tables": tables,
+            "count": len(tables)
+        }
+    except Exception as e:
+        logger.error("Error listing conversations", error=str(e))
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to list conversations: {str(e)}"
+        )
 
 # ======================================================
 # LOCAL RUN ENTRYPOINT

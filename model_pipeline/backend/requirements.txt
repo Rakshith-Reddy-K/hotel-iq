@@ -22,3 +22,5 @@ pytest-cov>=4.1.0
 httpx>=0.24.0
 pytest-mock>=3.11.0
 langchain-huggingface>=0.0.1
+psycopg2-binary
+typing-extensions

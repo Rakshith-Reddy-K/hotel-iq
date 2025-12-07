@@ -86,7 +86,8 @@ async def extract_explicit_hotel_name(user_message: str, thread_id: str) -> Opti
 
 def get_hotel_info_by_id(hotel_id: str) -> Optional[Dict[str, Any]]:
     """
-    Retrieve hotel information from CSV file using hotel_id.
+    Retrieve hotel information from CSV files using hotel_id.
+    Includes data from hotels.csv, amenities.csv, and policies.csv.
     
     Args:
         hotel_id: Hotel ID to look up
@@ -96,14 +97,16 @@ def get_hotel_info_by_id(hotel_id: str) -> Optional[Dict[str, Any]]:
     """
     import pandas as pd
     from pathlib import Path
+    import json
     
     try:
-        from .config import HOTELS_PATH
+        from .config import HOTELS_PATH, AMENITIES_PATH, POLICIES_PATH
         
         if not HOTELS_PATH.exists():
-            logger.warning("CSV file not found", path=str(HOTELS_PATH))
+            logger.warning("Hotels CSV file not found", path=str(HOTELS_PATH))
             return None
         
+        # Load hotels data
         df = pd.read_csv(HOTELS_PATH)
         
         if not hotel_id:
@@ -125,7 +128,8 @@ def get_hotel_info_by_id(hotel_id: str) -> Optional[Dict[str, Any]]:
                 return value.item()
             return str(value) if value is not None else ""
         
-        return {
+        # Build base hotel info
+        hotel_info = {
             "hotel_id": str(hotel_id),
             "name": to_python_type(hotel.get("official_name", "Unknown Hotel")),
             "hotel_name": to_python_type(hotel.get("official_name", "Unknown Hotel")),
@@ -141,6 +145,95 @@ def get_hotel_info_by_id(hotel_id: str) -> Optional[Dict[str, Any]]:
             "overall_rating": to_python_type(hotel.get("overall_rating", "")),
             "additional_info": to_python_type(hotel.get("additional_info", ""))
         }
+        
+        # Load amenities data
+        if AMENITIES_PATH.exists():
+            try:
+                amenities_df = pd.read_csv(AMENITIES_PATH)
+                hotel_amenities = amenities_df[amenities_df['hotel_id'] == int(hotel_id)]
+                
+                if not hotel_amenities.empty:
+                    amenities_text = []
+                    for _, amenity_row in hotel_amenities.iterrows():
+                        category = amenity_row.get('category', 'Amenities')
+                        description = amenity_row.get('description', '')
+                        details = amenity_row.get('details', '')
+                        
+                        # Format amenity information
+                        amenity_section = f"\n{category}:"
+                        if description:
+                            amenity_section += f"\n{description}"
+                        
+                        # Parse JSON details if available
+                        if details and details != '':
+                            try:
+                                details_dict = json.loads(details)
+                                amenity_section += "\n" + "\n".join([f"  - {k.replace('_', ' ').title()}: {v}" for k, v in details_dict.items() if v])
+                            except json.JSONDecodeError:
+                                amenity_section += f"\n{details}"
+                        
+                        amenities_text.append(amenity_section)
+                    
+                    hotel_info["amenities"] = "\n".join(amenities_text)
+                else:
+                    hotel_info["amenities"] = ""
+            except Exception as e:
+                logger.warning("Error loading amenities data", error=str(e))
+                hotel_info["amenities"] = ""
+        else:
+            hotel_info["amenities"] = ""
+        
+        # Load policies data
+        if POLICIES_PATH.exists():
+            try:
+                policies_df = pd.read_csv(POLICIES_PATH)
+                hotel_policies = policies_df[policies_df['hotel_id'] == int(hotel_id)]
+                
+                if not hotel_policies.empty:
+                    policy = hotel_policies.iloc[0]
+                    policies_text = []
+                    
+                    # Check-in/Check-out
+                    check_in = to_python_type(policy.get('check_in_time', ''))
+                    check_out = to_python_type(policy.get('check_out_time', ''))
+                    if check_in or check_out:
+                        policies_text.append(f"Check-in: {check_in}, Check-out: {check_out}")
+                    
+                    # Minimum age
+                    min_age = to_python_type(policy.get('minimum_age', ''))
+                    if min_age:
+                        policies_text.append(f"Minimum check-in age: {min_age}")
+                    
+                    # Pet policy
+                    pet_policy = to_python_type(policy.get('pet_policy', ''))
+                    if pet_policy:
+                        policies_text.append(f"Pet Policy: {pet_policy}")
+                    
+                    # Smoking policy
+                    smoking_policy = to_python_type(policy.get('smoking_policy', ''))
+                    if smoking_policy:
+                        policies_text.append(f"Smoking Policy: {smoking_policy}")
+                    
+                    # Children policy
+                    children_policy = to_python_type(policy.get('children_policy', ''))
+                    if children_policy:
+                        policies_text.append(f"Children Policy: {children_policy}")
+                    
+                    # Cancellation policy
+                    cancellation_policy = to_python_type(policy.get('cancellation_policy', ''))
+                    if cancellation_policy:
+                        policies_text.append(f"Cancellation Policy: {cancellation_policy}")
+                    
+                    hotel_info["policies"] = "\n".join(policies_text)
+                else:
+                    hotel_info["policies"] = ""
+            except Exception as e:
+                logger.warning("Error loading policies data", error=str(e))
+                hotel_info["policies"] = ""
+        else:
+            hotel_info["policies"] = ""
+        
+        return hotel_info
         
     except Exception as e:
         logger.error("Error retrieving hotel info from CSV", error=str(e))

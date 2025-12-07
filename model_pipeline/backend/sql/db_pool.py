@@ -63,7 +63,3 @@ def close_all():
         _pool.closeall()
         print("All connections closed")
         _pool = None
-
-
-# Initialize pool on module import
-initialize_pool()

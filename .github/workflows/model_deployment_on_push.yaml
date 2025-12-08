@@ -277,6 +277,7 @@ jobs:
             --image=${{ env.REGISTRY }}/${{ env.PROJECT_ID }}/${{ env.GAR_REPOSITORY }}/${{ env.SERVICE_NAME }}-${{ env.ENVIRONMENT }}:${{ steps.tags.outputs.version_tag }} \
             --region=${{ env.REGION }} \
             --project=${{ env.PROJECT_ID }} \
+            --vpc-egress all-traffic \
             --platform=managed \
             --allow-unauthenticated \
             --memory=${{ env.MEMORY }} \

@@ -23,6 +23,7 @@ RUN pip install --upgrade pip && \
 # Copy application code
 COPY . .
 
+#Comment these to run locally line 27-32
 # Create necessary directories
 RUN mkdir -p /app/data/processed /app/logs
 

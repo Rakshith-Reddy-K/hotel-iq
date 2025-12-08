@@ -259,6 +259,16 @@ jobs:
           echo "short_sha=${SHORT_SHA}" >> $GITHUB_OUTPUT
           echo "revision_tag=${REVISION_TAG}" >> $GITHUB_OUTPUT
 
+      - name: Download data files before build
+        run: |
+          cd model_pipeline/backend
+          mkdir -p data/processed/boston
+
+          # Use authenticated gcloud to download
+          gsutil -m cp gs://${{ env.GCS_BUCKET_NAME }}/processed/boston/*.csv data/processed/boston/
+
+          ls -lh data/processed/boston/
+
       - name: Build and push Docker image
         uses: docker/build-push-action@v5
         with:

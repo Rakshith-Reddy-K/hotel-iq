@@ -3,7 +3,6 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-# Environment variables
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PIP_NO_CACHE_DIR=1 \
@@ -27,12 +26,14 @@ COPY . .
 # Create necessary directories
 RUN mkdir -p /app/data/processed /app/logs
 
+# Copy pre-downloaded data files (download before Docker build)
+# This assumes you download the files in GitHub Actions before building
+COPY data/processed /app/data/processed
+
 # Expose port
 EXPOSE 8000
 
-# Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
     CMD curl -f http://localhost:8000/health || exit 1
 
-# Run application (JSON format - recommended)
 CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]

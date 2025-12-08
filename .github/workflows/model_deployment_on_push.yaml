@@ -278,6 +278,8 @@ jobs:
             --region=${{ env.REGION }} \
             --project=${{ env.PROJECT_ID }} \
             --vpc-egress all-traffic \
+            --startup-cpu-boost \
+            --no-cpu-throttling \
             --platform=managed \
             --allow-unauthenticated \
             --memory=${{ env.MEMORY }} \

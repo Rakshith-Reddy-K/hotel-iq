@@ -101,7 +101,7 @@ if not os.getenv('GOOGLE_APPLICATION_CREDENTIALS'):
 # Database Config (For Concierge/Admin)
 DB_DSN = f"postgresql://{os.getenv('CLOUD_DB_USER')}:{os.getenv('CLOUD_DB_PASSWORD')}@{os.getenv('CLOUD_DB_HOST')}:{os.getenv('CLOUD_DB_PORT')}/{os.getenv('CLOUD_DB_NAME')}"
 
-BASE_DIR = Path(__file__).resolve().parent
+current_dir = Path(__file__).resolve().parent
 if (current_dir / "frontend").exists():
     # Docker/Production: frontend was copied/mounted into the same dir as main.py
     FRONTEND_DIR = current_dir / "frontend"

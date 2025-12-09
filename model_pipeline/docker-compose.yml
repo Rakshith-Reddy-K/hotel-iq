@@ -4,7 +4,7 @@ services:
   # HotelIQ Backend API
   backend:
     build:
-      context: .
+      context: ./backend
       dockerfile: Dockerfile
     container_name: hoteliq-backend
     ports:

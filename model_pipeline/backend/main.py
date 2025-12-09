@@ -6,6 +6,12 @@ FastAPI application for the HotelIQ hotel comparison and booking chatbot.
 """
 
 import os
+from dotenv import load_dotenv  # ⬅️ add this
+
+# Load .env from the backend folder
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+load_dotenv(os.path.join(BASE_DIR, ".env"))
+
 import uuid
 import logging
 from pathlib import Path
@@ -240,11 +246,27 @@ else:
     logger.warning("Frontend directory not found", path=str(FRONTEND_DIR))
 
 # Route to return chat.html UI
-@app.get("/chat")
+# @app.get("/chat")
+# async def chat_page():
+#     """Serve the chat interface HTML page."""
+#     return FileResponse(FRONTEND_DIR / "chat.html")
+
+from fastapi.responses import HTMLResponse
+
+@app.get("/chat", response_class=HTMLResponse)
 async def chat_page():
     """Serve the chat interface HTML page."""
-    return FileResponse(FRONTEND_DIR / "chat.html")
+    html_path = FRONTEND_DIR / "chat.html"
 
+    if not html_path.exists():
+        logger.error(f"chat.html not found at {html_path}")
+        return HTMLResponse(
+            content=f"<h1>chat.html not found</h1><p>Looked in: {html_path}</p>",
+            status_code=500,
+        )
+
+    with open(html_path, "r", encoding="utf-8") as f:
+        return f.read()
 
 # ======================================================
 # CHAT SERVICE

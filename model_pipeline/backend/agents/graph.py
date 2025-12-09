@@ -1,3 +1,333 @@
+# """
+# Agent Graph Setup
+# =================
+
+# Configures and compiles the LangGraph agent workflow.
+# """
+
+# from langgraph.graph import StateGraph, END
+# from langgraph.checkpoint.memory import MemorySaver
+
+# from .state import HotelIQState
+# from .query_agent import metadata_agent_node
+# from .comparison_agent import comparison_node
+# from .booking_agent import booking_node
+# from .review_agent import review_node
+# from .supervisor import supervisor_node
+# from logger_config import get_logger
+
+# logger = get_logger(__name__)
+
+
+# def route_from_metadata(state: HotelIQState) -> str:
+#     """Metadata agent always routes to supervisor."""
+#     return "supervisor"
+
+
+# def route_from_supervisor(state: HotelIQState) -> str:
+#     """Supervisor routes based on detected intent."""
+#     intent = state.get("intent", "comparison")
+#     if intent == "booking":
+#         return "booking"
+#     elif intent == "review":
+#         return "review"
+#     return "comparison"
+
+
+# graph = StateGraph(HotelIQState)
+
+# graph.add_node("metadata_agent", metadata_agent_node)
+# graph.add_node("supervisor", supervisor_node)
+# graph.add_node("comparison", comparison_node)
+# graph.add_node("booking", booking_node)
+# graph.add_node("review", review_node)
+
+# graph.set_entry_point("metadata_agent")
+
+# graph.add_edge("metadata_agent", "supervisor")
+
+# graph.add_conditional_edges(
+#     "supervisor",
+#     route_from_supervisor,
+#     {
+#         "comparison": "comparison",
+#         "booking": "booking",
+#         "review": "review",
+#     },
+# )
+
+# graph.add_edge("comparison", END)
+# graph.add_edge("booking", END)
+# graph.add_edge("review", END)
+
+# checkpointer = MemorySaver()
+# agent_graph = graph.compile(checkpointer=checkpointer)
+
+# logger.info("LangGraph graph compiled.")
+
+# """
+# Agent Graph Setup
+# =================
+
+# Configures and compiles the LangGraph agent workflow.
+# """
+
+# from langgraph.graph import StateGraph, END
+# from langgraph.checkpoint.memory import MemorySaver
+
+# from .state import HotelIQState
+# from .query_agent import metadata_agent_node
+# from .comparison_agent import comparison_node
+# from .booking_collection_agent import booking_collection_node
+# from .booking_execution_agent import booking_execution_node
+# from .review_agent import review_node
+# from .supervisor import supervisor_node
+# from logger_config import get_logger
+
+# logger = get_logger(__name__)
+
+
+# def route_from_metadata(state: HotelIQState) -> str:
+#     """Metadata agent always routes to supervisor."""
+#     return "supervisor"
+
+
+# def route_from_supervisor(state: HotelIQState) -> str:
+#     """Supervisor routes based on detected intent."""
+#     intent = state.get("intent", "comparison")
+#     if intent == "booking":
+#         return "booking_collection"
+#     elif intent == "review":
+#         return "review"
+#     return "comparison"
+
+
+# def route_from_booking(state: HotelIQState) -> str:
+#     """Route from booking collection based on stage."""
+#     booking_state = state.get("booking_conversation", {})
+#     stage = booking_state.get("stage", "collecting")
+    
+#     if stage == "executing":
+#         return "booking_execution"
+#     else:
+#         return "end"
+
+
+# graph = StateGraph(HotelIQState)
+
+# # Add all nodes
+# graph.add_node("metadata_agent", metadata_agent_node)
+# graph.add_node("supervisor", supervisor_node)
+# graph.add_node("comparison", comparison_node)
+# graph.add_node("booking_collection", booking_collection_node)
+# graph.add_node("booking_execution", booking_execution_node)
+# graph.add_node("review", review_node)
+
+# # Set entry point
+# graph.set_entry_point("metadata_agent")
+
+# # Add edges
+# graph.add_edge("metadata_agent", "supervisor")
+
+# # Supervisor routing
+# graph.add_conditional_edges(
+#     "supervisor",
+#     route_from_supervisor,
+#     {
+#         "comparison": "comparison",
+#         "booking_collection": "booking_collection",
+#         "review": "review",
+#     },
+# )
+
+# # Booking collection routing
+# graph.add_conditional_edges(
+#     "booking_collection",
+#     route_from_booking,
+#     {
+#         "booking_execution": "booking_execution",
+#         "end": END,
+#     },
+# )
+
+# # End nodes
+# graph.add_edge("comparison", END)
+# graph.add_edge("booking_execution", END)
+# graph.add_edge("review", END)
+
+# checkpointer = MemorySaver()
+# agent_graph = graph.compile(checkpointer=checkpointer)
+
+# logger.info("LangGraph graph compiled with booking agents.")
+
+# """
+# Agent Graph Setup
+# =================
+
+# Configures and compiles the LangGraph agent workflow.
+# """
+
+# from langgraph.graph import StateGraph, END
+# from langgraph.checkpoint.memory import MemorySaver
+
+# from .state import HotelIQState
+# from .query_agent import metadata_agent_node
+# from .comparison_agent import comparison_node
+# from .booking_collection_agent import booking_collection_node
+# from .booking_execution_agent import booking_execution_node
+# from .review_agent import review_node
+# from .supervisor import supervisor_node
+# from logger_config import get_logger
+
+# logger = get_logger(__name__)
+
+
+# def route_from_metadata(state: HotelIQState) -> str:
+#     """Metadata agent always routes to supervisor."""
+#     return "supervisor"
+
+
+# def _is_yes_like(message: str) -> bool:
+#     """
+#     Heuristic to detect simple confirmation messages like:
+#     'yes', 'yes proceed', 'yes that is correct', 'go ahead and book', etc.
+#     """
+#     msg = (message or "").strip().lower()
+
+#     yes_like_prefixes = (
+#         "yes",
+#         "yeah",
+#         "yep",
+#         "correct",
+#         "that is correct",
+#         "that's correct",
+#         "go ahead",
+#         "go ahead and book",
+#         "confirm",
+#         "please confirm",
+#         "yes proceed",
+#         "yes, proceed",
+#         "yes please",
+#         "yes please proceed",
+#         "yes book",
+#         "yes book it",
+#         "yes book hyatt",
+#         "yes book westin",
+#         "yes the information is correct",
+#         "yes the info is correct",
+#     )
+
+#     return any(msg == p or msg.startswith(p) for p in yes_like_prefixes)
+
+
+# def route_from_supervisor(state: HotelIQState) -> str:
+#     """
+#     Supervisor routes based on detected intent, with a shortcut
+#     to keep the user inside the booking flow when they are
+#     confirming details (simple 'yes/confirm' style replies).
+
+#     This fixes the issue where short 'yes' messages were being
+#     misclassified as COMPARISON and breaking the booking flow.
+#     """
+#     # --- 1) Booking-aware shortcut -----------------------------
+#     booking_state = state.get("booking_conversation") or {}
+#     stage = booking_state.get("stage", "").lower()
+
+#     messages = state.get("messages", [])
+#     last_msg_content = messages[-1]["content"] if messages else ""
+
+#     # If we're already collecting/confirming booking info and the user
+#     # says "yes / confirm / go ahead", force routing back to booking.
+#     if stage in ("initial", "collecting", "confirming") and _is_yes_like(last_msg_content):
+#         logger.info(
+#             "Routing to booking_collection based on yes-like confirmation in booking flow",
+#             stage=stage,
+#             last_message=last_msg_content,
+#         )
+#         return "booking_collection"
+
+#     # --- 2) Normal LLM-based intent routing --------------------
+#     intent = (state.get("intent") or "comparison").lower()
+
+#     if intent == "booking":
+#         return "booking_collection"
+#     elif intent == "review":
+#         return "review"
+#     else:
+#         return "comparison"
+
+
+# def route_from_booking(state: HotelIQState) -> str:
+#     """
+#     Route from booking collection based on stage.
+
+#     booking_collection_agent should set:
+#         state["booking_conversation"]["stage"] to one of:
+#         - 'initial' / 'collecting' / 'confirming'  → stay in collection (END)
+#         - 'executing'                              → go to booking_execution
+#     """
+#     booking_state = state.get("booking_conversation") or {}
+#     stage = booking_state.get("stage", "collecting").lower()
+
+#     if stage == "executing":
+#         return "booking_execution"
+#     else:
+#         # Finish this turn; next user message will re-enter via supervisor
+#         return "end"
+
+
+# # ---------------------------------------------------------------------
+# # Graph definition
+# # ---------------------------------------------------------------------
+
+# graph = StateGraph(HotelIQState)
+
+# # Add all nodes
+# graph.add_node("metadata_agent", metadata_agent_node)
+# graph.add_node("supervisor", supervisor_node)
+# graph.add_node("comparison", comparison_node)
+# graph.add_node("booking_collection", booking_collection_node)
+# graph.add_node("booking_execution", booking_execution_node)
+# graph.add_node("review", review_node)
+
+# # Set entry point
+# graph.set_entry_point("metadata_agent")
+
+# # Flow: metadata -> supervisor
+# graph.add_edge("metadata_agent", "supervisor")
+
+# # Supervisor routing (with booking-aware shortcut in route_from_supervisor)
+# graph.add_conditional_edges(
+#     "supervisor",
+#     route_from_supervisor,
+#     {
+#         "comparison": "comparison",
+#         "booking_collection": "booking_collection",
+#         "review": "review",
+#     },
+# )
+
+# # Booking collection routing
+# graph.add_conditional_edges(
+#     "booking_collection",
+#     route_from_booking,
+#     {
+#         "booking_execution": "booking_execution",
+#         "end": END,
+#     },
+# )
+
+# # End nodes
+# graph.add_edge("comparison", END)
+# graph.add_edge("booking_execution", END)
+# graph.add_edge("review", END)
+
+# checkpointer = MemorySaver()
+# agent_graph = graph.compile(checkpointer=checkpointer)
+
+# logger.info("LangGraph graph compiled with booking agents.")
+
+
 """
 Agent Graph Setup
 =================
@@ -11,7 +341,8 @@ from langgraph.checkpoint.memory import MemorySaver
 from .state import HotelIQState
 from .query_agent import metadata_agent_node
 from .comparison_agent import comparison_node
-from .booking_agent import booking_node
+from .booking_collection_agent import booking_collection_node
+from .booking_execution_agent import booking_execution_node
 from .review_agent import review_node
 from .supervisor import supervisor_node
 from logger_config import get_logger
@@ -25,43 +356,103 @@ def route_from_metadata(state: HotelIQState) -> str:
 
 
 def route_from_supervisor(state: HotelIQState) -> str:
-    """Supervisor routes based on detected intent."""
-    intent = state.get("intent", "comparison")
+    """
+    Supervisor routes based on detected intent.
+
+    Booking-aware routing:
+    - If there is an active booking_conversation in a mid-booking stage
+      (choosing_room_type / collecting / confirming), we ALWAYS continue
+      to booking_collection, even if the LLM says the intent is COMPARISON.
+    """
+    # 1) If a booking flow is already in progress, keep the user in it
+    booking_conv = state.get("booking_conversation")
+    if isinstance(booking_conv, dict):
+        stage = (booking_conv.get("stage") or "").lower()
+
+        if stage in {"choosing_room_type", "collecting", "confirming"}:
+            logger.info(
+                "Continuing booking flow from supervisor",
+                stage=stage,
+            )
+            return "booking_collection"
+
+    # 2) Otherwise, fall back to intent-based routing
+    intent = (state.get("intent") or "comparison").lower()
+
     if intent == "booking":
-        return "booking"
+        return "booking_collection"
     elif intent == "review":
         return "review"
-    return "comparison"
+    else:
+        return "comparison"
 
+
+def route_from_booking(state: HotelIQState) -> str:
+    """
+    Route from booking collection based on stage.
+
+    booking_collection_agent should set:
+        state["booking_conversation"]["stage"] to one of:
+        - 'initial' / 'choosing_room_type' / 'collecting' / 'confirming' → stay in collection (END)
+        - 'executing'                                                    → go to booking_execution
+    """
+    booking_state = state.get("booking_conversation") or {}
+    stage = (booking_state.get("stage") or "collecting").lower()
+
+    if stage == "executing":
+        return "booking_execution"
+    else:
+        # Finish this turn; next user message will re-enter via supervisor
+        return "end"
+
+
+# ---------------------------------------------------------------------
+# Graph definition
+# ---------------------------------------------------------------------
 
 graph = StateGraph(HotelIQState)
 
+# Add all nodes
 graph.add_node("metadata_agent", metadata_agent_node)
 graph.add_node("supervisor", supervisor_node)
 graph.add_node("comparison", comparison_node)
-graph.add_node("booking", booking_node)
+graph.add_node("booking_collection", booking_collection_node)
+graph.add_node("booking_execution", booking_execution_node)
 graph.add_node("review", review_node)
 
+# Set entry point
 graph.set_entry_point("metadata_agent")
 
+# Flow: metadata -> supervisor
 graph.add_edge("metadata_agent", "supervisor")
 
+# Supervisor routing (booking-aware)
 graph.add_conditional_edges(
     "supervisor",
     route_from_supervisor,
     {
         "comparison": "comparison",
-        "booking": "booking",
+        "booking_collection": "booking_collection",
         "review": "review",
     },
 )
 
+# Booking collection routing
+graph.add_conditional_edges(
+    "booking_collection",
+    route_from_booking,
+    {
+        "booking_execution": "booking_execution",
+        "end": END,
+    },
+)
+
+# End nodes
 graph.add_edge("comparison", END)
-graph.add_edge("booking", END)
+graph.add_edge("booking_execution", END)
 graph.add_edge("review", END)
 
 checkpointer = MemorySaver()
 agent_graph = graph.compile(checkpointer=checkpointer)
 
-logger.info("LangGraph graph compiled.")
-
+logger.info("LangGraph graph compiled with booking agents.")

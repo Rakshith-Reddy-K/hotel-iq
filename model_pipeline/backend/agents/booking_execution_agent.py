@@ -1,0 +1,321 @@
+# """
+# Booking Execution Agent
+# ========================
+
+# Handles database operations and email sending for bookings.
+# """
+
+# import uuid
+# import json
+# from datetime import datetime
+# from pathlib import Path
+
+# from .state import HotelIQState
+# from .booking_state import GuestInfo
+# from .email_service import send_booking_confirmation_email
+# from .config import BOOKINGS_PATH, bookings_log
+# from .prompt_loader import get_prompts
+# from logger_config import get_logger
+
+# logger = get_logger(__name__)
+
+
+# async def booking_execution_node(state: HotelIQState) -> HotelIQState:
+#     """
+#     Booking Execution Agent: Creates booking record and sends confirmation email.
+#     """
+#     prompts = get_prompts()
+#     booking_state = state.get("booking_conversation", {})
+#     guest_info = GuestInfo(**booking_state["guest_info"])
+#     hotel_id = booking_state["hotel_id"]
+#     hotel_name = booking_state["hotel_name"]
+#     hotel_info = booking_state.get("hotel_info", {})
+    
+#     logger.info("Booking Execution Agent", hotel_id=hotel_id, guest_email=guest_info.email)
+    
+#     try:
+#         # Generate booking ID
+#         booking_id = f"BK-{uuid.uuid4().hex[:8].upper()}"
+        
+#         # Create booking record
+#         booking_record = {
+#             "booking_id": booking_id,
+#             "hotel_id": hotel_id,
+#             "hotel_name": hotel_name,
+#             "guest_first_name": guest_info.first_name,
+#             "guest_last_name": guest_info.last_name,
+#             "guest_email": guest_info.email,
+#             "guest_phone": guest_info.phone,
+#             "check_in_date": guest_info.check_in_date.isoformat(),
+#             "check_out_date": guest_info.check_out_date.isoformat(),
+#             "num_guests": guest_info.num_guests,
+#             "booking_date": datetime.now().isoformat(),
+#             "status": "confirmed"
+#         }
+        
+#         # Save to bookings log
+#         bookings_log.append(booking_record)
+        
+#         try:
+#             with open(BOOKINGS_PATH, "w", encoding="utf-8") as f:
+#                 json.dump(bookings_log, f, indent=2)
+#             logger.info("Booking saved to file", booking_id=booking_id)
+#         except Exception as e:
+#             logger.error("Failed to save booking to file", error=str(e))
+        
+#         # Send confirmation email
+#         email_sent = await send_booking_confirmation_email(
+#             guest_info=guest_info,
+#             booking_id=booking_id,
+#             hotel_name=hotel_name,
+#             hotel_info=hotel_info
+#         )
+        
+#         if email_sent:
+#             response = prompts.format(
+#                 "booking_execution.success",
+#                 booking_id=booking_id,
+#                 email=guest_info.email
+#             )
+#             logger.info("Booking completed successfully", booking_id=booking_id)
+#         else:
+#             response = prompts.format(
+#                 "booking_execution.success_no_email",
+#                 booking_id=booking_id
+#             )
+#             logger.warning("Booking created but email failed", booking_id=booking_id)
+        
+#         # Update booking state
+#         booking_state["stage"] = "completed"
+#         booking_state["booking_id"] = booking_id
+#         state["booking_conversation"] = booking_state
+        
+#     except Exception as e:
+#         logger.error("Booking execution failed", error=str(e))
+#         response = prompts.format("booking_execution.error")
+#         booking_state["stage"] = "cancelled"
+#         state["booking_conversation"] = booking_state
+    
+#     # Add response to messages
+#     msgs = state.get("messages", [])
+#     msgs.append({"role": "assistant", "content": response})
+#     state["messages"] = msgs
+    
+#     state["route"] = "end"
+#     return state
+
+"""
+Booking Execution Agent
+=======================
+
+Takes the collected booking information and:
+- Looks up the logged-in user in the DB (first_name, last_name, email)
+- Generates a booking_reference and room_number
+- Inserts a row into the `bookings` table in Cloud SQL
+- Sends confirmation email
+"""
+
+import uuid
+from datetime import datetime
+from typing import Dict, Any
+
+from .state import HotelIQState
+from .booking_state import GuestInfo
+from .email_service import send_booking_confirmation_email
+from logger_config import get_logger
+
+# Use your pooled DB connection
+from sql.db_pool import get_connection
+
+logger = get_logger(__name__)
+
+
+def _generate_booking_reference() -> str:
+    """Generate a short human-friendly booking reference like REF-A1B2C3."""
+    return "REF-" + uuid.uuid4().hex[:6].upper()
+
+
+def _generate_room_number(conn, hotel_id: int) -> str:
+    """
+    Generate a pseudo-sequential room number.
+
+    Pattern:
+      - 100–110
+      - 200–210
+      - 300–310
+      - ...
+    We cycle through these ranges per hotel based on how many bookings exist.
+    """
+    floors = list(range(1, 10))  # 1xx, 2xx, ... 9xx
+    allowed_rooms = []
+    for floor in floors:
+        base = floor * 100
+        for offset in range(0, 11):  # 0..10  → 100..110
+            allowed_rooms.append(base + offset)
+
+    with conn.cursor() as cur:
+        cur.execute("SELECT COUNT(*) FROM bookings WHERE hotel_id = %s", (hotel_id,))
+        count = cur.fetchone()[0] or 0
+
+    index = count % len(allowed_rooms)
+    room_number = allowed_rooms[index]
+    return str(room_number)
+
+
+async def booking_execution_node(state: HotelIQState) -> HotelIQState:
+    """
+    Finalize the booking:
+
+    - Get user info from `users` table using state["user_id"]
+    - Insert into `bookings` table
+    - Send confirmation email
+    - Respond to the user with booking_reference etc.
+    """
+    booking_state = state.get("booking_conversation") or {}
+    hotel_id_raw = booking_state.get("hotel_id") or state.get("hotel_id")
+    hotel_name = booking_state.get("hotel_name") or state.get("metadata", {}).get("hotel_name", "this hotel")
+    hotel_info: Dict[str, Any] = booking_state.get("hotel_info") or state.get("metadata", {}).get("hotel_info", {})
+
+    if not hotel_id_raw:
+        logger.error("No hotel_id found in state during booking execution")
+        response_text = "I’m sorry, I couldn’t identify which hotel to book. Please try again."
+    else:
+        hotel_id = int(hotel_id_raw)
+
+        # Rebuild GuestInfo from state
+        guest_info_raw = booking_state.get("guest_info") or {}
+        guest_info = GuestInfo(**guest_info_raw)
+
+        # Pull logged-in user_id from state (set by ChatService)
+        user_id = state.get("user_id")
+        if not user_id:
+            logger.error("No user_id in state during booking execution")
+            response_text = "I’m having trouble verifying your account. Please log in again."
+        else:
+            try:
+                with get_connection() as conn:
+                    # 1) Look up user in users table
+                    with conn.cursor() as cur:
+                        cur.execute(
+                            """
+                            SELECT first_name, last_name, email
+                            FROM users
+                            WHERE id = %s
+                            """,
+                            (user_id,),
+                        )
+                        row = cur.fetchone()
+
+                    if not row:
+                        logger.error("User not found in DB for booking", user_id=user_id)
+                        response_text = "I couldn’t find your profile in our system. Please register or log in again."
+                    else:
+                        db_first_name, db_last_name, db_email = row
+
+                        # If GuestInfo still has its own names/emails, we prefer DB values
+                        guest_first_name = db_first_name or guest_info.first_name or "Guest"
+                        guest_last_name = db_last_name or guest_info.last_name or ""
+                        guest_email = db_email or guest_info.email
+
+                        # Ensure GuestInfo used by email has the DB values
+                        guest_info.first_name = guest_first_name
+                        guest_info.last_name = guest_last_name
+                        guest_info.email = guest_email
+
+                        # 2) Generate booking_reference and room_number
+                        booking_reference = _generate_booking_reference()
+                        room_number = _generate_room_number(conn, hotel_id)
+
+                        # 3) Insert into bookings table (Cloud SQL)
+                        check_in_date = guest_info.check_in_date.date()
+                        check_out_date = guest_info.check_out_date.date()
+                        num_guests = guest_info.num_guests
+                        room_type = booking_state.get("room_type") or getattr(guest_info, "room_type", None)
+
+                        with conn.cursor() as cur:
+                            cur.execute(
+                                """
+                                INSERT INTO bookings (
+                                    hotel_id,
+                                    booking_reference,
+                                    room_number,
+                                    guest_first_name,
+                                    guest_last_name,
+                                    guest_email,
+                                    check_in_date,
+                                    check_out_date,
+                                    status,
+                                    room_type,
+                                    num_guests,
+                                    hotel_name
+                                )
+                                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                                RETURNING id
+                                """,
+                                (
+                                    hotel_id,
+                                    booking_reference,
+                                    room_number,
+                                    guest_first_name,
+                                    guest_last_name,
+                                    guest_email,
+                                    check_in_date,
+                                    check_out_date,
+                                    "confirmed",
+                                    room_type,
+                                    num_guests,
+                                    hotel_name,
+                                ),
+                            )
+                            booking_id_row = cur.fetchone()
+                            db_booking_id = booking_id_row[0] if booking_id_row else None
+
+                        logger.info(
+                            "Booking saved to DB",
+                            hotel_id=hotel_id,
+                            booking_reference=booking_reference,
+                            db_booking_id=db_booking_id,
+                        )
+
+                        # 4) Send confirmation email (best-effort)
+                        try:
+                            await send_booking_confirmation_email(
+                                guest_info=guest_info,
+                                booking_id=booking_reference,
+                                hotel_name=hotel_name,
+                                hotel_info=hotel_info,
+                            )
+                        except Exception as e:
+                            logger.error(
+                                "Failed to send confirmation email",
+                                error=str(e),
+                                booking_reference=booking_reference,
+                            )
+
+                        # 5) Build success response for the chat
+                        response_text = (
+                            f"🎉 Your booking is confirmed!\n\n"
+                            f"**Hotel:** {hotel_name}\n"
+                            f"**Booking Reference:** `{booking_reference}`\n"
+                            f"**Room Number:** {room_number}\n"
+                            f"**Check-in:** {check_in_date.strftime('%B %d, %Y')}\n"
+                            f"**Check-out:** {check_out_date.strftime('%B %d, %Y')}\n"
+                            f"**Guests:** {num_guests}\n"
+                            f"{f'**Room Type:** {room_type}' if room_type else ''}\n\n"
+                            f"A confirmation email has been sent to **{guest_email}**.\n"
+                            f"Please keep your booking reference handy for check-in and for accessing the concierge portal."
+                        )
+            except Exception as e:
+                logger.error("Error during booking execution", error=str(e))
+                response_text = "Something went wrong while finalizing your booking. Please try again in a moment."
+
+    # Mark stage as completed
+    booking_state["stage"] = "completed"
+    state["booking_conversation"] = booking_state
+
+    # Append assistant message
+    msgs = state.get("messages", [])
+    msgs.append({"role": "assistant", "content": response_text})
+    state["messages"] = msgs
+
+    return state

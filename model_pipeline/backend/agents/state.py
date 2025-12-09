@@ -27,3 +27,30 @@ class HotelIQState(TypedDict, total=False):
     # Last suggested hotels for reference resolution (replaces global last_suggestions dict)
     last_suggestions: List[Dict[str, str]]  # List of hotel dicts: {"hotel_id": str, "name": str, "star_rating": str}
 
+
+"""
+State Definition
+================
+
+Contains the state TypedDict for the LangGraph agent system.
+"""
+
+from typing import Any, Dict, List, Literal, TypedDict, Optional
+
+
+class HotelIQState(TypedDict, total=False):
+    """State for the HotelIQ agent graph."""
+    
+    messages: List[Dict[str, str]]
+    user_id: str
+    thread_id: str
+    hotel_id: str
+    intent: Literal["comparison", "booking", "review"]
+    route: Literal["comparison", "booking_collection", "booking_execution", "review", "metadata", "end"]
+    
+    metadata: Dict[str, Any]
+    conversation_context: Dict[str, Any]
+    last_suggestions: List[Dict[str, str]]
+    
+    # Booking conversation state
+    booking_conversation: Optional[Dict[str, Any]]

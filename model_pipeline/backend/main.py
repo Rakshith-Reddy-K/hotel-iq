@@ -31,6 +31,8 @@ from fastapi import HTTPException, status
 from typing import Dict, Any
 from sql.queries import list_tables
 from auth_routes import auth_router
+from hotel_routes import hotel_router
+
 # Setup logging
 configure_logger()
 logger = get_logger(__name__)
@@ -230,6 +232,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 app.include_router(auth_router, prefix="/api/v1")
+app.include_router(hotel_router, prefix="/api/v1")
 # Serve frontend static files
 if FRONTEND_DIR.exists():
     app.mount("/static", StaticFiles(directory=str(FRONTEND_DIR)), name="static")

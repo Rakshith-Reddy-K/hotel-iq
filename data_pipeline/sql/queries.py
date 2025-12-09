@@ -331,30 +331,31 @@ def bulk_insert_from_csvs(csv_dir: str = 'data/processed/boston'):
 
 
 def create_bookings_table():
-    """Create the bookings table for guest authentication [Day 1 Task]"""
+    """Create the bookings table with hotel_id support"""
     with get_connection() as conn:
         with conn.cursor() as cursor:
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS bookings (
                     id SERIAL PRIMARY KEY,
-                    booking_reference VARCHAR(50) UNIQUE NOT NULL,
+                    hotel_id INTEGER NOT NULL, -- Added hotel_id
+                    booking_reference VARCHAR(50) NOT NULL,
                     room_number VARCHAR(10) NOT NULL,
                     guest_first_name VARCHAR(100),
                     guest_last_name VARCHAR(100) NOT NULL,
                     guest_email VARCHAR(200),
-                    guest_phone VARCHAR(50),
                     check_in_date DATE,
                     check_out_date DATE,
-                    room_type VARCHAR(50),
-                    total_guests INTEGER,
                     status VARCHAR(20) DEFAULT 'confirmed',
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    -- Room number is unique per hotel, not globally
+                    CONSTRAINT bookings_hotel_room_unique UNIQUE (hotel_id, room_number),
+                    CONSTRAINT bookings_reference_unique UNIQUE (booking_reference)
                 );
             """)
             print("Bookings table created successfully")
 
 def create_guest_requests_table():
-    """Create the guest_requests table for Admin Dashboard [Day 1 Task]"""
+    """Create the guest_requests table (Unchanged, but ensures link to booking)"""
     with get_connection() as conn:
         with conn.cursor() as cursor:
             cursor.execute("""
@@ -365,13 +366,13 @@ def create_guest_requests_table():
                     guest_name VARCHAR(100),
                     message_text TEXT,
                     bot_response TEXT,
-                    request_type VARCHAR(50), -- 'housekeeping', 'amenity', 'info'
+                    request_type VARCHAR(50), 
+                    is_service_request BOOLEAN DEFAULT FALSE, -- Explicit flag for admin filtering
                     status VARCHAR(20) DEFAULT 'pending',
-                    assigned_to VARCHAR(100),
                     priority VARCHAR(20) DEFAULT 'normal',
+                    assigned_to VARCHAR(100),
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    resolved_at TIMESTAMP,
-                    response_time_minutes INTEGER
+                    resolved_at TIMESTAMP
                 );
             """)
             print("Guest Requests table created successfully")

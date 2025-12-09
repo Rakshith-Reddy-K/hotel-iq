@@ -19,7 +19,7 @@ from pathlib import Path
 from typing import List, Optional
 from dataclasses import dataclass
 
-from fastapi import FastAPI, HTTPException, Depends 
+from fastapi import FastAPI, HTTPException, Depends, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
@@ -33,6 +33,7 @@ import bucket_util
 import path as path_util
 
 from agents.concierge_agent import process_guest_message
+from agents.pinecone_retrieval import get_hotel_by_id  
 from logger_config import configure_logger, get_logger
 import json
 from datetime import datetime
@@ -242,6 +243,17 @@ async def startup_event():
     download_processed_data()
     try:
         app.state.pool = await asyncpg.create_pool(DB_DSN)
+        
+        # --- NEW: Create Knowledge Table ---
+        async with app.state.pool.acquire() as conn:
+            await conn.execute("""
+                CREATE TABLE IF NOT EXISTS hotel_knowledge (
+                    hotel_id INTEGER PRIMARY KEY,
+                    context_text TEXT,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                );
+            """)
+        
         logger.info(" Connected to Database (AsyncPG)")
     except Exception as e:
         logger.error(f" DB Connection Failed: {e}")
@@ -393,14 +405,16 @@ logger.info("ChatService ready.")
 # API ROUTES
 # ======================================================
 class GuestVerifyRequest(BaseModel):
+    hotelId: int 
     roomNumber: str
     lastName: str
 
 class GuestChatRequest(BaseModel):
-    message: str
+    bookingId: int
+    hotelId: str 
     roomNumber: str
     guestName: str
-    bookingId: int
+    message: str
 
 class RequestUpdate(BaseModel):
     status: str
@@ -469,18 +483,19 @@ async def send_message(request: ChatRequest):
 # --- CONCIERGE: GUEST VERIFICATION ---
 @app.post("/api/guest/verify")
 async def guest_verify(req: GuestVerifyRequest):
-    """Verify guest credentials against bookings table."""
+    """Verify guest credentials for a specific hotel."""
     if not hasattr(app.state, 'pool') or not app.state.pool:
         raise HTTPException(status_code=503, detail="Database not ready")
 
     async with app.state.pool.acquire() as conn:
+        # Now checks hotel_id as well to support multi-tenancy
         row = await conn.fetchrow(
             """
             SELECT id, room_number, guest_first_name, guest_last_name, check_out_date 
             FROM bookings 
-            WHERE room_number = $1 AND LOWER(guest_last_name) = LOWER($2)
+            WHERE hotel_id = $1 AND room_number = $2 AND LOWER(guest_last_name) = LOWER($3)
             """, 
-            req.roomNumber, req.lastName
+            req.hotelId, req.roomNumber, req.lastName
         )
 
         if row:
@@ -488,32 +503,132 @@ async def guest_verify(req: GuestVerifyRequest):
                 "bookingId": row['id'],
                 "roomNumber": row['room_number'],
                 "guestName": f"{row['guest_first_name']} {row['guest_last_name']}",
-                "checkoutDate": str(row['check_out_date'])
+                "hotelId": req.hotelId
             }
         else:
-            return {"error": "Invalid room number or last name."}
+            return {"error": "Invalid room or name for this hotel."}
 
-# --- CONCIERGE: GUEST CHAT ---
+@app.post("/api/admin/upload-knowledge")
+async def upload_knowledge(hotel_id: int, file: UploadFile = File(...)):
+    """
+    Manager uploads a text file (Menu, Wifi, Policies).
+    We store the text content in the database to inject into the Chatbot.
+    """
+    if not hasattr(app.state, 'pool'): raise HTTPException(503, "DB down")
+    
+    # Read file content
+    content = await file.read()
+    text_content = content.decode("utf-8")
+    
+    async with app.state.pool.acquire() as conn:
+        # Upsert: Update if exists, Insert if new
+        await conn.execute("""
+            INSERT INTO hotel_knowledge (hotel_id, context_text, updated_at)
+            VALUES ($1, $2, NOW())
+            ON CONFLICT (hotel_id) 
+            DO UPDATE SET context_text = $2, updated_at = NOW()
+        """, hotel_id, text_content)
+        
+    return {"status": "success", "message": "Knowledge base updated"}
+
+# GET CURRENT KNOWLEDGE (for viewing) ---
+@app.get("/api/admin/knowledge/{hotel_id}")
+async def get_knowledge(hotel_id: int):
+    if not hasattr(app.state, 'pool'): raise HTTPException(503, "DB down")
+    async with app.state.pool.acquire() as conn:
+        val = await conn.fetchval("SELECT context_text FROM hotel_knowledge WHERE hotel_id=$1", hotel_id)
+        return {"context": val or ""}
+
+
 @app.post("/api/chat/guest")
 async def guest_chat(req: GuestChatRequest):
-    """Concierge chat for checked-in guests."""
-    # 1. Process with Concierge Agent
-    agent_result = await process_guest_message(req.message, req.guestName, req.roomNumber)
+    """Concierge chat with Pinecone Context, History, and Intelligent Filtering."""
     
-    # 2. Log to Database
+    # 1. RETRIEVE HOTEL CONTEXT (RAG)
+    hotel_doc = get_hotel_by_id(req.hotelId)
+    base_context = hotel_doc.page_content if hotel_doc else "General hotel info."
+    if hotel_doc:
+        meta = hotel_doc.metadata
+        hotel_context = (
+            f"Hotel Name: {meta.get('hotel_name')}\n"
+            f"Address: {meta.get('address')}\n"
+            f"Star Rating: {meta.get('star_rating')}\n"
+            f"Description & Amenities: {hotel_doc.page_content}\n"
+        )
+    else:
+        hotel_context = "Hotel details currently unavailable. Please rely on general knowledge."
+
+    # 2. RETRIEVE MANAGER'S CUSTOM KNOWLEDGE (Database)
+    custom_context = ""
+    if hasattr(app.state, 'pool') and app.state.pool:
+        async with app.state.pool.acquire() as conn:
+            # Fetch custom text
+            custom_context = await conn.fetchval(
+                "SELECT context_text FROM hotel_knowledge WHERE hotel_id = $1", 
+                int(req.hotelId) # Ensure int
+            )
+    
+    # Combine them!
+    full_context = f"""
+    OFFICIAL HOTEL DATA:
+    {base_context}
+    
+    MANAGER'S DAILY UPDATES (Highest Priority):
+    {custom_context or "No specific daily updates."}
+    """
+
+    # 3. RETRIEVE CONVERSATION HISTORY (Last 10 messages)
+    history = []
+    if hasattr(app.state, 'pool') and app.state.pool:
+        async with app.state.pool.acquire() as conn:
+            rows = await conn.fetch(
+                """
+                SELECT message_text, bot_response 
+                FROM guest_requests 
+                WHERE booking_id = $1 
+                ORDER BY created_at ASC LIMIT 10
+                """, 
+                req.bookingId
+            )
+            for r in rows:
+                history.append({"role": "user", "content": r['message_text']})
+                history.append({"role": "assistant", "content": r['bot_response']})
+
+    # 4. PROCESS WITH AGENT
+    agent_result = await process_guest_message(
+        message=req.message, 
+        guest_name=req.guestName, 
+        room_number=req.roomNumber,
+        hotel_context=full_context,
+        history=history
+    )
+    
+    # 4. FILTER: STOP LOGGING "OTHER" REQUESTS
+    # This prevents chit-chat from cluttering the dashboard
+    if agent_result['request_type'] == 'other':
+        return {
+            "response": agent_result['response'],
+            "requestId": None,
+            "type": "other",
+            "status": "ignored"
+        }
+
+    # 5. LOG ACTIONABLE REQUESTS TO DATABASE
     if hasattr(app.state, 'pool') and app.state.pool:
         async with app.state.pool.acquire() as conn:
             request_id = await conn.fetchval(
                 """
                 INSERT INTO guest_requests 
-                (booking_id, room_number, guest_name, message_text, bot_response, request_type, status, priority)
-                VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+                (booking_id, room_number, guest_name, message_text, bot_response, 
+                 request_type, is_service_request, status, priority)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
                 RETURNING id
                 """,
                 req.bookingId, req.roomNumber, req.guestName, 
                 req.message, agent_result['response'], 
                 agent_result['request_type'],
-                'pending' if agent_result['is_service_request'] else 'resolved', 
+                agent_result['is_service_request'],
+                'pending', # Actionable items are always pending initially
                 agent_result['priority']
             )
             
@@ -521,23 +636,56 @@ async def guest_chat(req: GuestChatRequest):
                 "response": agent_result['response'],
                 "requestId": request_id,
                 "type": agent_result['request_type'],
-                "status": "pending" if agent_result['is_service_request'] else "resolved"
+                "status": "pending"
             }
     
     return {"response": agent_result['response'], "error": "Logged locally (DB unavailable)"}
 
+
 # --- ADMIN: FETCH REQUESTS ---
 @app.get("/api/admin/requests")
-async def get_admin_requests(status: Optional[str] = None):
-    """Fetch requests for the Admin Dashboard."""
-    if not hasattr(app.state, 'pool') or not app.state.pool:
-        raise HTTPException(status_code=503, detail="Database not ready")
+async def get_admin_requests(
+    hotel_id: Optional[int] = None, 
+    category: Optional[str] = None # New filter for specific tabs if needed
+):
+    """
+    Fetch requests sorted by PRIORITY.
+    Excludes 'other' (chit-chat) requests entirely.
+    """
+    if not hasattr(app.state, 'pool'): return []
+    
+    # Base query: Exclude 'other' and 'ignored'
+    query = """
+        SELECT r.* FROM guest_requests r
+        JOIN bookings b ON r.booking_id = b.id
+        WHERE r.request_type != 'other' AND r.status != 'ignored'
+    """
+    params = []
+    
+    # Filter by specific hotel
+    if hotel_id:
+        query += f" AND b.hotel_id = ${len(params)+1}"
+        params.append(hotel_id)
+    
+    # Optional: Filter by category server-side (if you want to optimize bandwidth)
+    if category and category != 'all':
+        query += f" AND r.request_type = ${len(params)+1}"
+        params.append(category)
         
+    # SORTING: High Priority First
+    query += """
+        ORDER BY 
+        CASE 
+            WHEN r.priority = 'high' THEN 1 
+            WHEN r.priority = 'medium' THEN 2 
+            ELSE 3 
+        END, 
+        r.created_at DESC 
+        LIMIT 100
+    """
+    
     async with app.state.pool.acquire() as conn:
-        if status:
-            rows = await conn.fetch("SELECT * FROM guest_requests WHERE status = $1 ORDER BY created_at DESC", status)
-        else:
-            rows = await conn.fetch("SELECT * FROM guest_requests ORDER BY created_at DESC LIMIT 50")
+        rows = await conn.fetch(query, *params)
         return [dict(row) for row in rows]
 
 # --- ADMIN: UPDATE REQUEST ---
@@ -569,20 +717,14 @@ async def get_admin_stats():
             "SELECT status, COUNT(*) as count FROM guest_requests GROUP BY status"
         )
         
-        # Get average response time (mock logic for now as we need 'resolved_at' populated)
-        avg_time = await conn.fetchval(
-            "SELECT AVG(EXTRACT(EPOCH FROM (resolved_at - created_at))/60)::int FROM guest_requests WHERE status = 'resolved'"
-        )
-
         stats = {row['status']: row['count'] for row in status_counts}
         
         return {
             "pending_requests": stats.get("pending", 0),
             "resolved_requests": stats.get("resolved", 0),
-            "avg_response_time": avg_time or 0,
+            # avg_response_time removed
             "total_requests": sum(stats.values())
         }
-
 @app.get("/admin")
 async def admin_page():
     """Serve the admin dashboard HTML page."""

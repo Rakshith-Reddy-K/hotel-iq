@@ -24,3 +24,6 @@ pytest-mock>=3.11.0
 langchain-huggingface>=0.0.1
 psycopg2-binary
 typing-extensions
+python-jose[cryptography]
+bcrypt
+email-validator

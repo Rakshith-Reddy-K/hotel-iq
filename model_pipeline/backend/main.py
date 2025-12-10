@@ -22,7 +22,7 @@ from dataclasses import dataclass
 from fastapi import FastAPI, HTTPException, Depends, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, HTMLResponse
 from pydantic import BaseModel, Field
 from contextlib import asynccontextmanager
 
@@ -50,40 +50,6 @@ logger = get_logger(__name__)
 # ======================================================
 # GCP CREDENTIALS SETUP
 # ======================================================
-
-class MessageModel(BaseModel):
-    """Model for a chat message."""
-    id: int
-    from_: str = Field(..., alias="from")
-    text: str
-    timestamp: str
-
-    class Config:
-        populate_by_name = True
-
-
-class SaveConversationRequest(BaseModel):
-    """Request model for saving conversation."""
-    threadId: str = Field(..., max_length=200)
-    userId: str = Field(..., max_length=100)
-    hotelId: str = Field(..., max_length=50)
-    messages: List[MessageModel]
-
-
-class ConversationResponse(BaseModel):
-    """Response model for conversation retrieval."""
-    threadId: str
-    userId: str
-    hotelId: str
-    messages: List[Dict[str, Any]]
-    lastUpdated: str
-
-
-class DeleteConversationRequest(BaseModel):
-    """Request model for deleting conversation."""
-    userId: str = Field(..., max_length=100)
-    hotelId: str = Field(..., max_length=50)
-
 
 # Set GCP credentials path if not already set
 if not os.getenv('GOOGLE_APPLICATION_CREDENTIALS'):
@@ -200,120 +166,111 @@ def download_processed_data():
     return success_count == len(files_to_download)
 
 # ======================================================
-# FASTAPI APP SETUP
+# PYDANTIC MODELS
 # ======================================================
 
-BASE_DIR = Path(__file__).resolve().parent.parent
-FRONTEND_DIR = BASE_DIR / "frontend"
+class MessageModel(BaseModel):
+    """Model for a chat message."""
+    id: int
+    from_: str = Field(..., alias="from")
+    text: str
+    timestamp: str
 
-app = FastAPI(title="HotelIQ Comparison API")
+    class Config:
+        populate_by_name = True
 
-@app.get("/")
-async def root():
-    """Root endpoint."""
-    return {
-        "message": "HotelIQ API is running",
-        "status": "ok",
-        "service": "hoteliq-backend",
-        "version": "1.0.0"
-    }
 
-@app.get("/health")
-async def health_check():
-    """Health check endpoint for Docker and Cloud Run."""
-    return {
-        "status": "healthy",
-        "service": "hoteliq-backend",
-        "version": "1.0.0"
-    }
+class SaveConversationRequest(BaseModel):
+    """Request model for saving conversation."""
+    threadId: str = Field(..., max_length=200)
+    userId: str = Field(..., max_length=100)
+    hotelId: str = Field(..., max_length=50)
+    messages: List[MessageModel]
 
-@app.get("/health/ready")
-async def readiness_check():
-    """
-    Readiness check - verifies app is ready to serve traffic.
-    Checks if data files are available.
-    """
-    city = os.getenv('CITY', 'boston')
-    files_status = check_data_files_exist(city)
-    all_ready = all(files_status.values())
-    
-    return {
-        "status": "ready" if all_ready else "not_ready",
-        "service": "hoteliq-backend",
-        "data_files": files_status,
-        "city": city
-    }
 
-# Add startup event to download data
-@app.on_event("startup")
-async def startup_event():
-    """Execute on application startup: Download data & Connect to DB."""
-    logger.info("Starting HotelIQ API...")
-    download_processed_data()
-    try:
-        app.state.pool = await asyncpg.create_pool(DB_DSN)
-        
-        # --- NEW: Create Knowledge Table ---
-        async with app.state.pool.acquire() as conn:
-            await conn.execute("""
-                CREATE TABLE IF NOT EXISTS hotel_knowledge (
-                    hotel_id INTEGER PRIMARY KEY,
-                    context_text TEXT,
-                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                );
-            """)
-        
-        logger.info(" Connected to Database (AsyncPG)")
-    except Exception as e:
-        logger.error(f" DB Connection Failed: {e}")
-        app.state.pool = None
-    logger.info("Startup complete!")
+class ConversationResponse(BaseModel):
+    """Response model for conversation retrieval."""
+    threadId: str
+    userId: str
+    hotelId: str
+    messages: List[Dict[str, Any]]
+    lastUpdated: str
 
-@app.on_event("shutdown")
-async def shutdown_event():
-    """Close database connection on shutdown."""
-    if hasattr(app.state, 'pool') and app.state.pool:
-        await app.state.pool.close()
-        logger.info("🛑 Database connection closed")
 
-# CORS configuration
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-app.include_router(auth_router, prefix="/api/v1")
-app.include_router(hotel_router, prefix="/api/v1")
-# Serve frontend static files
-if FRONTEND_DIR.exists():
-    app.mount("/static", StaticFiles(directory=str(FRONTEND_DIR)), name="static")
-else:
-    logger.warning("Frontend directory not found", path=str(FRONTEND_DIR))
+class DeleteConversationRequest(BaseModel):
+    """Request model for deleting conversation."""
+    userId: str = Field(..., max_length=100)
+    hotelId: str = Field(..., max_length=50)
 
-# Route to return chat.html UI
-# @app.get("/chat")
-# async def chat_page():
-#     """Serve the chat interface HTML page."""
-#     return FileResponse(FRONTEND_DIR / "chat.html")
 
-from fastapi.responses import HTMLResponse
+class GuestVerifyRequest(BaseModel):
+    hotelId: int 
+    roomNumber: str
+    lastName: str
 
-@app.get("/chat", response_class=HTMLResponse)
-async def chat_page():
-    """Serve the chat interface HTML page."""
-    html_path = FRONTEND_DIR / "chat.html"
 
-    if not html_path.exists():
-        logger.error(f"chat.html not found at {html_path}")
-        return HTMLResponse(
-            content=f"<h1>chat.html not found</h1><p>Looked in: {html_path}</p>",
-            status_code=500,
-        )
+class GuestInfoRequest(BaseModel):
+    """Request model for getting guest info by room number."""
+    hotelId: int
+    roomNumber: str
 
-    with open(html_path, "r", encoding="utf-8") as f:
-        return f.read()
+
+class BookingLoginRequest(BaseModel):
+    """Request model for guest login with booking reference."""
+    bookingReference: str
+
+
+class GuestChatRequest(BaseModel):
+    bookingId: int
+    hotelId: str 
+    roomNumber: str
+    guestName: str
+    message: str
+
+
+class RequestUpdate(BaseModel):
+    status: str
+    assigned_to: Optional[str] = None
+
+
+class BookingStatusUpdate(BaseModel):
+    """Request model for updating booking check-in status."""
+    status: str  # confirmed, checked_in, checked_out, cancelled
+
+
+class ChatRequest(BaseModel):
+    """Request model for chat endpoint with validation."""
+    message: str = Field(
+        ...,
+        min_length=1,
+        max_length=2000,
+        description="User message (1-2000 characters)"
+    )
+    user_id: str = Field(
+        ...,
+        min_length=1,
+        max_length=100,
+        description="User identifier"
+    )
+    hotel_id: str = Field(
+        ...,
+        min_length=1,
+        max_length=50,
+        description="Hotel identifier"
+    )
+    thread_id: Optional[str] = Field(
+        None,
+        max_length=200,
+        description="Thread identifier for conversation continuity"
+    )
+
+
+class ChatResponseModel(BaseModel):
+    """Response model for chat endpoint."""
+    response: str
+    thread_id: str
+    followup_suggestions: List[str]
+
 
 # ======================================================
 # CHAT SERVICE
@@ -411,57 +368,124 @@ logger.info("ChatService ready.")
 
 
 # ======================================================
-# API ROUTES
+# FASTAPI APP SETUP
 # ======================================================
-class GuestVerifyRequest(BaseModel):
-    hotelId: int 
-    roomNumber: str
-    lastName: str
 
-class GuestChatRequest(BaseModel):
-    bookingId: int
-    hotelId: str 
-    roomNumber: str
-    guestName: str
-    message: str
+app = FastAPI(title="HotelIQ Comparison API")
 
-class RequestUpdate(BaseModel):
-    status: str
-    assigned_to: Optional[str] = None
+@app.get("/")
+async def root():
+    """Root endpoint."""
+    return {
+        "message": "HotelIQ API is running",
+        "status": "ok",
+        "service": "hoteliq-backend",
+        "version": "1.0.0"
+    }
 
-class ChatRequest(BaseModel):
-    """Request model for chat endpoint with validation."""
-    message: str = Field(
-        ...,
-        min_length=1,
-        max_length=2000,
-        description="User message (1-2000 characters)"
-    )
-    user_id: str = Field(
-        ...,
-        min_length=1,
-        max_length=100,
-        description="User identifier"
-    )
-    hotel_id: str = Field(
-        ...,
-        min_length=1,
-        max_length=50,
-        description="Hotel identifier"
-    )
-    thread_id: Optional[str] = Field(
-        None,
-        max_length=200,
-        description="Thread identifier for conversation continuity"
-    )
+@app.get("/health")
+async def health_check():
+    """Health check endpoint for Docker and Cloud Run."""
+    return {
+        "status": "healthy",
+        "service": "hoteliq-backend",
+        "version": "1.0.0"
+    }
+
+@app.get("/health/ready")
+async def readiness_check():
+    """
+    Readiness check - verifies app is ready to serve traffic.
+    Checks if data files are available.
+    """
+    city = os.getenv('CITY', 'boston')
+    files_status = check_data_files_exist(city)
+    all_ready = all(files_status.values())
+    
+    return {
+        "status": "ready" if all_ready else "not_ready",
+        "service": "hoteliq-backend",
+        "data_files": files_status,
+        "city": city
+    }
+
+# Add startup event to download data
+@app.on_event("startup")
+async def startup_event():
+    """Execute on application startup: Download data & Connect to DB."""
+    logger.info("Starting HotelIQ API...")
+    download_processed_data()
+    try:
+        app.state.pool = await asyncpg.create_pool(DB_DSN)
+        
+        # Create Knowledge Table if not exists
+        async with app.state.pool.acquire() as conn:
+            await conn.execute("""
+                CREATE TABLE IF NOT EXISTS hotel_knowledge (
+                    hotel_id INTEGER PRIMARY KEY,
+                    context_text TEXT,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                );
+            """)
+        
+        logger.info("✅ Connected to Database (AsyncPG)")
+    except Exception as e:
+        logger.error(f"❌ DB Connection Failed: {e}")
+        app.state.pool = None
+    logger.info("Startup complete!")
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    """Close database connection on shutdown."""
+    if hasattr(app.state, 'pool') and app.state.pool:
+        await app.state.pool.close()
+        logger.info("🛑 Database connection closed")
+
+# CORS configuration
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# Include routers
+app.include_router(auth_router, prefix="/api/v1")
+app.include_router(hotel_router, prefix="/api/v1")
+
+# Serve frontend static files
+if FRONTEND_DIR.exists():
+    app.mount("/static", StaticFiles(directory=str(FRONTEND_DIR)), name="static")
+else:
+    logger.warning("Frontend directory not found", path=str(FRONTEND_DIR))
 
 
-class ChatResponseModel(BaseModel):
-    """Response model for chat endpoint."""
-    response: str
-    thread_id: str
-    followup_suggestions: List[str]
+@app.get("/chat", response_class=HTMLResponse)
+async def chat_page():
+    """Serve the chat interface HTML page."""
+    html_path = FRONTEND_DIR / "chat.html"
 
+    if not html_path.exists():
+        logger.error(f"chat.html not found at {html_path}")
+        return HTMLResponse(
+            content=f"<h1>chat.html not found</h1><p>Looked in: {html_path}</p>",
+            status_code=500,
+        )
+
+    with open(html_path, "r", encoding="utf-8") as f:
+        return f.read()
+
+
+@app.get("/admin")
+async def admin_page():
+    """Serve the admin dashboard HTML page."""
+    return FileResponse(FRONTEND_DIR / "admin.html")
+
+
+# ======================================================
+# CHAT API ROUTES
+# ======================================================
 
 @app.post("/api/v1/chat/message", response_model=ChatResponseModel)
 async def send_message(request: ChatRequest):
@@ -489,15 +513,235 @@ async def send_message(request: ChatRequest):
     )
 
 
-# --- CONCIERGE: GUEST VERIFICATION ---
-@app.post("/api/guest/verify")
-async def guest_verify(req: GuestVerifyRequest):
-    """Verify guest credentials for a specific hotel."""
+@app.post("/api/v1/chat/save")
+async def save_conversation(request: SaveConversationRequest):
+    """Save chat conversation to Google Cloud Storage."""
+    try:
+        thread_id = sanitize_user_input(request.threadId)
+        user_id = sanitize_user_input(request.userId)
+        hotel_id = sanitize_user_input(request.hotelId)
+        
+        conversation_data = {
+            "threadId": thread_id,
+            "userId": user_id,
+            "hotelId": hotel_id,
+            "messages": [msg.dict(by_alias=True) for msg in request.messages],
+            "lastUpdated": datetime.utcnow().isoformat(),
+        }
+        
+        blob_name = f"conversations/{hotel_id}/{user_id}/{thread_id}.json"
+        temp_dir = Path("./temp")
+        temp_dir.mkdir(exist_ok=True)
+        temp_file = temp_dir / f"{thread_id}.json"
+        
+        with open(temp_file, 'w') as f:
+            json.dump(conversation_data, f, indent=2)
+        
+        bucket_util.upload_file_to_gcs(str(temp_file), blob_name)
+        temp_file.unlink()
+        
+        logger.info("Conversation saved", thread_id=thread_id, user_id=user_id)
+        
+        return {
+            "status": "success",
+            "message": "Conversation saved successfully",
+            "threadId": thread_id,
+            "blobPath": blob_name
+        }
+        
+    except Exception as e:
+        logger.error("Error saving conversation", error=str(e))
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to save conversation: {str(e)}"
+        )
+
+
+@app.get("/api/v1/chat/conversation/{thread_id}", response_model=ConversationResponse)
+async def get_conversation(thread_id: str, userId: str, hotelId: str):
+    """Retrieve a chat conversation from Google Cloud Storage."""
+    try:
+        thread_id = sanitize_user_input(thread_id)
+        user_id = sanitize_user_input(userId)
+        hotel_id = sanitize_user_input(hotelId)
+        
+        blob_name = f"conversations/{hotel_id}/{user_id}/{thread_id}.json"
+        temp_dir = Path("./temp")
+        temp_dir.mkdir(exist_ok=True)
+        temp_file = temp_dir / f"{thread_id}_download.json"
+        
+        try:
+            bucket_util.download_file_from_gcs(blob_name, str(temp_file))
+        except FileNotFoundError:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Conversation not found"
+            )
+        
+        with open(temp_file, 'r') as f:
+            conversation_data = json.load(f)
+        
+        temp_file.unlink()
+        logger.info("Conversation retrieved", thread_id=thread_id, user_id=user_id)
+        
+        return ConversationResponse(**conversation_data)
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("Error retrieving conversation", error=str(e))
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to retrieve conversation: {str(e)}"
+        )
+
+
+@app.delete("/api/v1/chat/conversation/{thread_id}")
+async def delete_conversation(thread_id: str, request: DeleteConversationRequest):
+    """Delete a chat conversation from Google Cloud Storage."""
+    try:
+        thread_id = sanitize_user_input(thread_id)
+        user_id = sanitize_user_input(request.userId)
+        hotel_id = sanitize_user_input(request.hotelId)
+        
+        blob_name = f"conversations/{hotel_id}/{user_id}/{thread_id}.json"
+        bucket = bucket_util.get_bucket()
+        blob = bucket.blob(blob_name)
+        
+        if not blob.exists():
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Conversation not found"
+            )
+        
+        blob.delete()
+        logger.info("Conversation deleted", thread_id=thread_id, user_id=user_id)
+        
+        return {
+            "status": "success",
+            "message": "Conversation deleted successfully",
+            "threadId": thread_id
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("Error deleting conversation", error=str(e))
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to delete conversation: {str(e)}"
+        )
+
+
+@app.get("/api/v1/chat/conversations/list")
+async def list_conversations(userId: str, hotelId: str, limit: int = 50):
+    """List all conversations for a user at a specific hotel."""
+    try:
+        user_id = sanitize_user_input(userId)
+        hotel_id = sanitize_user_input(hotelId)
+        
+        prefix = f"conversations/{hotel_id}/{user_id}/"
+        bucket = bucket_util.get_bucket()
+        blobs = list(bucket.list_blobs(prefix=prefix, max_results=limit))
+        
+        conversations = []
+        for blob in blobs:
+            thread_id = blob.name.split('/')[-1].replace('.json', '')
+            conversations.append({
+                "threadId": thread_id,
+                "lastModified": blob.updated.isoformat() if blob.updated else None,
+                "size": blob.size
+            })
+        
+        logger.info("Listed conversations", user_id=user_id, count=len(conversations))
+        
+        return {
+            "status": "success",
+            "conversations": conversations,
+            "count": len(conversations)
+        }
+        
+    except Exception as e:
+        logger.error("Error listing conversations", error=str(e))
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to list conversations: {str(e)}"
+        )
+
+
+# ======================================================
+# CONCIERGE API ROUTES - GUEST ACCESS
+# ======================================================
+
+@app.post("/api/guest/booking-login")
+async def guest_booking_login(req: BookingLoginRequest):
+    """
+    Guest login using booking reference number.
+    Returns guest information needed for concierge chat.
+    """
     if not hasattr(app.state, 'pool') or not app.state.pool:
         raise HTTPException(status_code=503, detail="Database not ready")
 
     async with app.state.pool.acquire() as conn:
-        # Now checks hotel_id as well to support multi-tenancy
+        row = await conn.fetchrow(
+            """
+            SELECT id, hotel_id, room_number, guest_first_name, guest_last_name, 
+                   check_in_date, check_out_date, check_in_status, hotel_name,
+                   guest_email, num_guests, room_type, booking_reference
+            FROM bookings 
+            WHERE LOWER(booking_reference) = LOWER($1)
+            ORDER BY check_in_date DESC
+            LIMIT 1
+            """, 
+            req.bookingReference.strip()
+        )
+
+        if row:
+            # Map database check_in_status to frontend status
+            db_status = (row['check_in_status'] or 'confirmed').lower()
+            
+            status_mapping = {
+                'confirmed': 'pending',
+                'checked_in': 'checked-in',
+                'checked-in': 'checked-in',
+                'checked_out': 'checked-out',
+                'checked-out': 'checked-out',
+                'cancelled': 'checked-out'
+            }
+            
+            frontend_status = status_mapping.get(db_status, 'pending')
+            
+            return {
+                "bookingId": row['id'],
+                "hotelId": row['hotel_id'],
+                "roomNumber": row['room_number'],
+                "guestName": f"{row['guest_first_name']} {row['guest_last_name']}",
+                "hotelName": row['hotel_name'],
+                "status": frontend_status,
+                "checkInDate": str(row['check_in_date']) if row['check_in_date'] else None,
+                "checkOutDate": str(row['check_out_date']) if row['check_out_date'] else None,
+                "guestEmail": row['guest_email'],
+                "numGuests": row['num_guests'],
+                "roomType": row['room_type'],
+                "bookingReference": row['booking_reference']
+            }
+        else:
+            raise HTTPException(
+                status_code=404, 
+                detail="Invalid booking reference. Please check and try again."
+            )
+
+
+@app.post("/api/guest/verify")
+async def guest_verify(req: GuestVerifyRequest):
+    """
+    Legacy endpoint for guest verification with last name.
+    Kept for backward compatibility with HTML version.
+    """
+    if not hasattr(app.state, 'pool') or not app.state.pool:
+        raise HTTPException(status_code=503, detail="Database not ready")
+
+    async with app.state.pool.acquire() as conn:
         row = await conn.fetchrow(
             """
             SELECT id, room_number, guest_first_name, guest_last_name, check_out_date 
@@ -517,43 +761,79 @@ async def guest_verify(req: GuestVerifyRequest):
         else:
             return {"error": "Invalid room or name for this hotel."}
 
-@app.post("/api/admin/upload-knowledge")
-async def upload_knowledge(hotel_id: int, file: UploadFile = File(...)):
-    """
-    Manager uploads a text file (Menu, Wifi, Policies).
-    We store the text content in the database to inject into the Chatbot.
-    """
-    if not hasattr(app.state, 'pool'): raise HTTPException(503, "DB down")
-    
-    # Read file content
-    content = await file.read()
-    text_content = content.decode("utf-8")
-    
-    async with app.state.pool.acquire() as conn:
-        # Upsert: Update if exists, Insert if new
-        await conn.execute("""
-            INSERT INTO hotel_knowledge (hotel_id, context_text, updated_at)
-            VALUES ($1, $2, NOW())
-            ON CONFLICT (hotel_id) 
-            DO UPDATE SET context_text = $2, updated_at = NOW()
-        """, hotel_id, text_content)
-        
-    return {"status": "success", "message": "Knowledge base updated"}
 
-# GET CURRENT KNOWLEDGE (for viewing) ---
-@app.get("/api/admin/knowledge/{hotel_id}")
-async def get_knowledge(hotel_id: int):
-    if not hasattr(app.state, 'pool'): raise HTTPException(503, "DB down")
+@app.post("/api/guest/info")
+async def get_guest_info(req: GuestInfoRequest):
+    """
+    Get guest information by hotel and room number.
+    Uses check_in_status from database to control chat access.
+    
+    Admin manages check-in status, which controls guest's chat access:
+    - 'confirmed' → Chat disabled (status: 'pending')
+    - 'checked_in' → Chat enabled (status: 'checked-in')
+    - 'checked_out' → Chat disabled (status: 'checked-out')
+    """
+    if not hasattr(app.state, 'pool') or not app.state.pool:
+        raise HTTPException(status_code=503, detail="Database not ready")
+
     async with app.state.pool.acquire() as conn:
-        val = await conn.fetchval("SELECT context_text FROM hotel_knowledge WHERE hotel_id=$1", hotel_id)
-        return {"context": val or ""}
+        row = await conn.fetchrow(
+            """
+            SELECT id, hotel_id, room_number, guest_first_name, guest_last_name, 
+                   check_in_date, check_out_date, check_in_status, hotel_name,
+                   guest_email, num_guests, room_type
+            FROM bookings 
+            WHERE hotel_id = $1 AND room_number = $2
+            ORDER BY check_in_date DESC
+            LIMIT 1
+            """, 
+            req.hotelId, req.roomNumber
+        )
+
+        if row:
+            # Map database check_in_status to frontend status
+            # Database values: confirmed, checked_in, checked_out, cancelled
+            # Frontend needs: pending, checked-in, checked-out
+            db_status = (row['check_in_status'] or 'confirmed').lower()
+            
+            status_mapping = {
+                'confirmed': 'pending',       # Guest confirmed but not checked in yet
+                'checked_in': 'checked-in',   # Guest is checked in - CHAT ENABLED
+                'checked-in': 'checked-in',   # Handle both formats
+                'checked_out': 'checked-out', # Guest checked out - CHAT DISABLED
+                'checked-out': 'checked-out',
+                'cancelled': 'checked-out'    # Treat cancelled as checked out
+            }
+            
+            frontend_status = status_mapping.get(db_status, 'pending')
+            
+            return {
+                "bookingId": row['id'],
+                "hotelId": row['hotel_id'],
+                "roomNumber": row['room_number'],
+                "guestName": f"{row['guest_first_name']} {row['guest_last_name']}",
+                "hotelName": row['hotel_name'],
+                "status": frontend_status,  # This controls chat access in frontend
+                "checkInDate": str(row['check_in_date']) if row['check_in_date'] else None,
+                "checkOutDate": str(row['check_out_date']) if row['check_out_date'] else None,
+                "guestEmail": row['guest_email'],
+                "numGuests": row['num_guests'],
+                "roomType": row['room_type']
+            }
+        else:
+            raise HTTPException(
+                status_code=404, 
+                detail="No booking found for this room. Please contact the front desk."
+            )
 
 
 @app.post("/api/chat/guest")
 async def guest_chat(req: GuestChatRequest):
-    """Concierge chat with Pinecone Context, History, and Intelligent Filtering."""
+    """
+    Concierge chat endpoint with RAG context, conversation history, and intelligent filtering.
+    """
     
-    # 1. RETRIEVE HOTEL CONTEXT (RAG)
+    # 1. RETRIEVE HOTEL CONTEXT (RAG from Pinecone)
     hotel_doc = get_hotel_by_id(req.hotelId)
     base_context = hotel_doc.page_content if hotel_doc else "General hotel info."
     if hotel_doc:
@@ -571,13 +851,12 @@ async def guest_chat(req: GuestChatRequest):
     custom_context = ""
     if hasattr(app.state, 'pool') and app.state.pool:
         async with app.state.pool.acquire() as conn:
-            # Fetch custom text
             custom_context = await conn.fetchval(
                 "SELECT context_text FROM hotel_knowledge WHERE hotel_id = $1", 
-                int(req.hotelId) # Ensure int
+                int(req.hotelId)
             )
     
-    # Combine them!
+    # Combine contexts
     full_context = f"""
     OFFICIAL HOTEL DATA:
     {base_context}
@@ -612,8 +891,7 @@ async def guest_chat(req: GuestChatRequest):
         history=history
     )
     
-    # 4. FILTER: STOP LOGGING "OTHER" REQUESTS
-    # This prevents chit-chat from cluttering the dashboard
+    # 5. FILTER: STOP LOGGING "OTHER" REQUESTS (chit-chat)
     if agent_result['request_type'] == 'other':
         return {
             "response": agent_result['response'],
@@ -622,7 +900,7 @@ async def guest_chat(req: GuestChatRequest):
             "status": "ignored"
         }
 
-    # 5. LOG ACTIONABLE REQUESTS TO DATABASE
+    # 6. LOG ACTIONABLE REQUESTS TO DATABASE
     if hasattr(app.state, 'pool') and app.state.pool:
         async with app.state.pool.acquire() as conn:
             request_id = await conn.fetchval(
@@ -637,7 +915,7 @@ async def guest_chat(req: GuestChatRequest):
                 req.message, agent_result['response'], 
                 agent_result['request_type'],
                 agent_result['is_service_request'],
-                'pending', # Actionable items are always pending initially
+                'pending',
                 agent_result['priority']
             )
             
@@ -651,17 +929,21 @@ async def guest_chat(req: GuestChatRequest):
     return {"response": agent_result['response'], "error": "Logged locally (DB unavailable)"}
 
 
-# --- ADMIN: FETCH REQUESTS ---
+# ======================================================
+# ADMIN API ROUTES - REQUESTS MANAGEMENT
+# ======================================================
+
 @app.get("/api/admin/requests")
 async def get_admin_requests(
     hotel_id: Optional[int] = None, 
-    category: Optional[str] = None # New filter for specific tabs if needed
+    category: Optional[str] = None
 ):
     """
-    Fetch requests sorted by PRIORITY.
-    Excludes 'other' (chit-chat) requests entirely.
+    Fetch guest requests sorted by priority.
+    Excludes 'other' (chit-chat) requests.
     """
-    if not hasattr(app.state, 'pool'): return []
+    if not hasattr(app.state, 'pool'): 
+        return []
     
     # Base query: Exclude 'other' and 'ignored'
     query = """
@@ -676,7 +958,7 @@ async def get_admin_requests(
         query += f" AND b.hotel_id = ${len(params)+1}"
         params.append(hotel_id)
     
-    # Optional: Filter by category server-side (if you want to optimize bandwidth)
+    # Optional: Filter by category
     if category and category != 'all':
         query += f" AND r.request_type = ${len(params)+1}"
         params.append(category)
@@ -697,22 +979,23 @@ async def get_admin_requests(
         rows = await conn.fetch(query, *params)
         return [dict(row) for row in rows]
 
-# --- ADMIN: UPDATE REQUEST ---
+
 @app.patch("/api/admin/requests/{request_id}")
 async def update_request(request_id: int, update: RequestUpdate):
-    """Update request status (e.g., mark as resolved)."""
+    """Update guest request status (e.g., mark as resolved)."""
     if not hasattr(app.state, 'pool') or not app.state.pool:
         raise HTTPException(status_code=503, detail="Database not ready")
 
-    from datetime import datetime
     async with app.state.pool.acquire() as conn:
         await conn.execute(
             "UPDATE guest_requests SET status = $1, assigned_to = $2, resolved_at = $3 WHERE id = $4",
-            update.status, update.assigned_to, 
+            update.status, 
+            update.assigned_to, 
             datetime.now() if update.status == 'resolved' else None,
             request_id
         )
     return {"status": "success", "id": request_id}
+
 
 @app.get("/api/admin/stats")
 async def get_admin_stats():
@@ -721,7 +1004,6 @@ async def get_admin_stats():
         raise HTTPException(status_code=503, detail="Database not ready")
 
     async with app.state.pool.acquire() as conn:
-        # Get total pending vs resolved
         status_counts = await conn.fetch(
             "SELECT status, COUNT(*) as count FROM guest_requests GROUP BY status"
         )
@@ -731,245 +1013,174 @@ async def get_admin_stats():
         return {
             "pending_requests": stats.get("pending", 0),
             "resolved_requests": stats.get("resolved", 0),
-            # avg_response_time removed
             "total_requests": sum(stats.values())
         }
-@app.get("/admin")
-async def admin_page():
-    """Serve the admin dashboard HTML page."""
-    return FileResponse(FRONTEND_DIR / "admin.html")
-    
-logger.info("FastAPI app created.")
 
-@app.post("/api/v1/chat/save")
-async def save_conversation(request: SaveConversationRequest):
+
+# ======================================================
+# ADMIN API ROUTES - BOOKINGS MANAGEMENT
+# ======================================================
+
+@app.get("/api/admin/bookings")
+async def get_admin_bookings(hotel_id: Optional[int] = None):
     """
-    Save chat conversation to Google Cloud Storage.
+    Fetch all bookings for a hotel with guest details.
+    Returns bookings sorted by check_in_status and check-in date.
+    """
+    if not hasattr(app.state, 'pool') or not app.state.pool:
+        raise HTTPException(status_code=503, detail="Database not ready")
     
-    Stores the conversation as JSON in GCS with the structure:
-    conversations/{hotelId}/{userId}/{threadId}.json
+    query = """
+        SELECT 
+            id,
+            hotel_id,
+            booking_reference,
+            room_number,
+            guest_first_name || ' ' || guest_last_name as guest_name,
+            guest_email,
+            check_in_date,
+            check_out_date,
+            num_guests,
+            status,
+            room_type,
+            check_in_status,
+            hotel_name,
+            created_at
+        FROM bookings
     """
-    try:
-        # Sanitize inputs
-        thread_id = sanitize_user_input(request.threadId)
-        user_id = sanitize_user_input(request.userId)
-        hotel_id = sanitize_user_input(request.hotelId)
-        
-        # Prepare conversation data
-        conversation_data = {
-            "threadId": thread_id,
-            "userId": user_id,
-            "hotelId": hotel_id,
-            "messages": [msg.dict(by_alias=True) for msg in request.messages],
-            "lastUpdated": datetime.utcnow().isoformat(),
-        }
-        
-        # Create blob path
-        blob_name = f"conversations/{hotel_id}/{user_id}/{thread_id}.json"
-        
-        # Save to temporary file
-        temp_dir = Path("./temp")
-        temp_dir.mkdir(exist_ok=True)
-        temp_file = temp_dir / f"{thread_id}.json"
-        
-        with open(temp_file, 'w') as f:
-            json.dump(conversation_data, f, indent=2)
-        
-        # Upload to GCS
-        bucket_util.upload_file_to_gcs(str(temp_file), blob_name)
-        
-        # Clean up temp file
-        temp_file.unlink()
-        
-        logger.info("Conversation saved", thread_id=thread_id, user_id=user_id)
-        
-        return {
-            "status": "success",
-            "message": "Conversation saved successfully",
-            "threadId": thread_id,
-            "blobPath": blob_name
-        }
-        
-    except Exception as e:
-        logger.error("Error saving conversation", error=str(e))
+    
+    params = []
+    if hotel_id:
+        query += " WHERE hotel_id = $1"
+        params.append(hotel_id)
+    
+    # Sort by check-in status priority
+    query += """
+        ORDER BY 
+            CASE COALESCE(check_in_status, 'confirmed')
+                WHEN 'checked_in' THEN 0
+                WHEN 'confirmed' THEN 1
+                WHEN 'checked_out' THEN 2
+                ELSE 3
+            END,
+            check_in_date DESC
+        LIMIT 100
+    """
+    
+    async with app.state.pool.acquire() as conn:
+        rows = await conn.fetch(query, *params)
+        result = []
+        for row in rows:
+            booking = dict(row)
+            # Set default status if null
+            if not booking.get('check_in_status'):
+                booking['check_in_status'] = 'confirmed'
+            # Map check_in_status to status for frontend compatibility
+            booking['status'] = booking['check_in_status']
+            result.append(booking)
+        return result
+
+
+@app.patch("/api/admin/bookings/{booking_id}/status")
+async def update_booking_status(booking_id: int, status_update: dict):
+    """
+    Admin updates booking check-in status.
+    Valid statuses: 'confirmed', 'checked_in', 'checked_out', 'cancelled'
+    
+    This controls guest's access to the concierge chat:
+    - 'confirmed' → Chat disabled, shows "Please check in"
+    - 'checked_in' → Chat enabled, guest can chat
+    - 'checked_out' → Chat disabled, shows "Thank you"
+    - 'cancelled' → Chat disabled
+    """
+    if not hasattr(app.state, 'pool') or not app.state.pool:
+        raise HTTPException(status_code=503, detail="Database not ready")
+    
+    new_status = status_update.get('status')
+    valid_statuses = ['confirmed', 'checked_in', 'checked_out', 'cancelled']
+    
+    if new_status not in valid_statuses:
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to save conversation: {str(e)}"
+            status_code=400, 
+            detail=f"Invalid status. Must be one of: {valid_statuses}"
         )
-
-
-@app.get("/api/v1/chat/conversation/{thread_id}", response_model=ConversationResponse)
-async def get_conversation(
-    thread_id: str,
-    userId: str,
-    hotelId: str
-):
-    """
-    Retrieve a chat conversation from Google Cloud Storage.
     
-    Args:
-        thread_id: Thread identifier
-        userId: User identifier (query param)
-        hotelId: Hotel identifier (query param)
-    
-    Returns:
-        Conversation data including all messages
-    """
-    try:
-        # Sanitize inputs
-        thread_id = sanitize_user_input(thread_id)
-        user_id = sanitize_user_input(userId)
-        hotel_id = sanitize_user_input(hotelId)
-        
-        # Create blob path
-        blob_name = f"conversations/{hotel_id}/{user_id}/{thread_id}.json"
-        
-        # Download from GCS
-        temp_dir = Path("./temp")
-        temp_dir.mkdir(exist_ok=True)
-        temp_file = temp_dir / f"{thread_id}_download.json"
-        
-        try:
-            bucket_util.download_file_from_gcs(blob_name, str(temp_file))
-        except FileNotFoundError:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Conversation not found"
-            )
-        
-        # Read conversation data
-        with open(temp_file, 'r') as f:
-            conversation_data = json.load(f)
-        
-        # Clean up temp file
-        temp_file.unlink()
-        
-        logger.info("Conversation retrieved", thread_id=thread_id, user_id=user_id)
-        
-        return ConversationResponse(**conversation_data)
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error("Error retrieving conversation", error=str(e))
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to retrieve conversation: {str(e)}"
+    async with app.state.pool.acquire() as conn:
+        # Check if booking exists
+        exists = await conn.fetchval(
+            "SELECT id FROM bookings WHERE id = $1",
+            booking_id
         )
-
-
-@app.delete("/api/v1/chat/conversation/{thread_id}")
-async def delete_conversation(
-    thread_id: str,
-    request: DeleteConversationRequest
-):
-    """
-    Delete a chat conversation from Google Cloud Storage.
-    
-    Args:
-        thread_id: Thread identifier
-        request: Contains userId and hotelId
-    
-    Returns:
-        Success status
-    """
-    try:
-        # Sanitize inputs
-        thread_id = sanitize_user_input(thread_id)
-        user_id = sanitize_user_input(request.userId)
-        hotel_id = sanitize_user_input(request.hotelId)
         
-        # Create blob path
-        blob_name = f"conversations/{hotel_id}/{user_id}/{thread_id}.json"
+        if not exists:
+            raise HTTPException(status_code=404, detail="Booking not found")
         
-        # Delete from GCS
-        bucket = bucket_util.get_bucket()
-        blob = bucket.blob(blob_name)
-        
-        if not blob.exists():
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Conversation not found"
-            )
-        
-        blob.delete()
-        
-        logger.info("Conversation deleted", thread_id=thread_id, user_id=user_id)
-        
-        return {
-            "status": "success",
-            "message": "Conversation deleted successfully",
-            "threadId": thread_id
-        }
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error("Error deleting conversation", error=str(e))
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to delete conversation: {str(e)}"
+        # Update check_in_status column
+        await conn.execute(
+            "UPDATE bookings SET check_in_status = $1 WHERE id = $2",
+            new_status, booking_id
         )
+    
+    logger.info("Booking status updated", booking_id=booking_id, new_status=new_status)
+    
+    return {
+        "success": True,
+        "message": f"Booking status updated to {new_status}",
+        "booking_id": booking_id,
+        "new_status": new_status
+    }
 
 
-@app.get("/api/v1/chat/conversations/list")
-async def list_conversations(
-    userId: str,
-    hotelId: str,
-    limit: int = 50
-):
+# ======================================================
+# ADMIN API ROUTES - KNOWLEDGE BASE
+# ======================================================
+
+@app.post("/api/admin/upload-knowledge")
+async def upload_knowledge(hotel_id: int, file: UploadFile = File(...)):
     """
-    List all conversations for a user at a specific hotel.
-    
-    Args:
-        userId: User identifier
-        hotelId: Hotel identifier
-        limit: Maximum number of conversations to return (default: 50)
-    
-    Returns:
-        List of conversation metadata
+    Manager uploads a text file (Menu, WiFi info, Policies).
+    Store the text content in the database to inject into the chatbot context.
     """
-    try:
-        # Sanitize inputs
-        user_id = sanitize_user_input(userId)
-        hotel_id = sanitize_user_input(hotelId)
+    if not hasattr(app.state, 'pool'): 
+        raise HTTPException(503, "Database unavailable")
+    
+    # Read file content
+    content = await file.read()
+    text_content = content.decode("utf-8")
+    
+    async with app.state.pool.acquire() as conn:
+        # Upsert: Update if exists, Insert if new
+        await conn.execute("""
+            INSERT INTO hotel_knowledge (hotel_id, context_text, updated_at)
+            VALUES ($1, $2, NOW())
+            ON CONFLICT (hotel_id) 
+            DO UPDATE SET context_text = $2, updated_at = NOW()
+        """, hotel_id, text_content)
         
-        # Create prefix for listing
-        prefix = f"conversations/{hotel_id}/{user_id}/"
-        
-        # List blobs
-        bucket = bucket_util.get_bucket()
-        blobs = list(bucket.list_blobs(prefix=prefix, max_results=limit))
-        
-        conversations = []
-        for blob in blobs:
-            # Extract thread_id from blob name
-            thread_id = blob.name.split('/')[-1].replace('.json', '')
-            
-            conversations.append({
-                "threadId": thread_id,
-                "lastModified": blob.updated.isoformat() if blob.updated else None,
-                "size": blob.size
-            })
-        
-        logger.info("Listed conversations", user_id=user_id, count=len(conversations))
-        
-        return {
-            "status": "success",
-            "conversations": conversations,
-            "count": len(conversations)
-        }
-        
-    except Exception as e:
-        logger.error("Error listing conversations", error=str(e))
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to list conversations: {str(e)}"
+    return {"status": "success", "message": "Knowledge base updated"}
+
+
+@app.get("/api/admin/knowledge/{hotel_id}")
+async def get_knowledge(hotel_id: int):
+    """Get current knowledge base for a hotel."""
+    if not hasattr(app.state, 'pool'): 
+        raise HTTPException(503, "Database unavailable")
+    
+    async with app.state.pool.acquire() as conn:
+        val = await conn.fetchval(
+            "SELECT context_text FROM hotel_knowledge WHERE hotel_id=$1", 
+            hotel_id
         )
+        return {"context": val or ""}
 
+
+# ======================================================
+# UTILITY ROUTES
+# ======================================================
 
 @app.get("/api/v1/dbtest")
 async def test_db_connection():
+    """Test database connection and list tables."""
     try:
        tables = list_tables()
        return {
@@ -978,11 +1189,12 @@ async def test_db_connection():
             "count": len(tables)
         }
     except Exception as e:
-        logger.error("Error listing conversations", error=str(e))
+        logger.error("Error testing DB", error=str(e))
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to list conversations: {str(e)}"
+            detail=f"Failed to test DB: {str(e)}"
         )
+
 
 # ======================================================
 # LOCAL RUN ENTRYPOINT
@@ -999,4 +1211,3 @@ if __name__ == "__main__":
     import uvicorn
     port = int(os.environ.get("PORT", 8000)) 
     uvicorn.run(app, host="0.0.0.0", port=port)
-

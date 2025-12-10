@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hotel Concierge</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .chat-scroll::-webkit-scrollbar { width: 6px; }
+        .chat-scroll::-webkit-scrollbar-thumb { background-color: #cbd5e1; border-radius: 4px; }
+    </style>
+</head>
+<body class="bg-gray-100 h-screen flex items-center justify-center">
+
+    <div id="login-screen" class="bg-white p-8 rounded-lg shadow-xl w-96">
+        <h1 class="text-2xl font-bold text-gray-800 mb-2">Guest Check-In</h1>
+        <p class="text-gray-500 mb-6 text-sm">Please verify your stay to access the concierge.</p>
+        
+        <div class="space-y-4">
+            <div>
+                <label class="block text-sm font-medium text-gray-700">Hotel ID</label>
+                <input type="number" id="hotelId" class="mt-1 block w-full border border-gray-300 rounded-md p-2" placeholder="e.g., 1" value="111418">
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700">Room Number</label>
+                <input type="text" id="roomNumber" class="mt-1 block w-full border border-gray-300 rounded-md p-2" placeholder="e.g., 102">
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700">Last Name</label>
+                <input type="text" id="lastName" class="mt-1 block w-full border border-gray-300 rounded-md p-2" placeholder="e.g., Smith">
+            </div>
+            
+            <button onclick="verifyGuest()" class="w-full bg-blue-600 text-white py-2 rounded-md hover:bg-blue-700 transition">Start Chat</button>
+            <p id="login-error" class="text-red-500 text-sm hidden mt-2 text-center"></p>
+        </div>
+    </div>
+
+    <div id="chat-interface" class="hidden bg-white w-full max-w-md h-[80vh] rounded-lg shadow-xl flex flex-col overflow-hidden">
+        <div class="bg-blue-600 p-4 text-white flex justify-between items-center shadow-md">
+            <div>
+                <h2 class="font-bold text-lg">Concierge</h2>
+                <p class="text-xs opacity-90" id="guest-details">Guest</p>
+            </div>
+            <button onclick="logout()" class="text-xs bg-blue-700 px-2 py-1 rounded hover:bg-blue-800">Exit</button>
+        </div>
+
+        <div id="messages" class="flex-1 p-4 overflow-y-auto chat-scroll bg-gray-50 space-y-4">
+            <div class="flex justify-start">
+                <div class="bg-white border border-gray-200 text-gray-800 rounded-lg rounded-tl-none px-4 py-2 max-w-[80%] shadow-sm">
+                    Hello! How can I assist you with your stay today?
+                </div>
+            </div>
+        </div>
+
+        <div class="bg-gray-50 px-4 py-3 border-t border-gray-200">
+            <div class="flex gap-2 flex-wrap justify-center">
+                <button onclick="sendQuick('What is the WiFi password?')" class="bg-white border border-gray-300 text-gray-700 px-3 py-1 rounded-full text-sm hover:bg-blue-50 hover:border-blue-400 hover:text-blue-700 transition shadow-sm font-medium">
+                    📶 WiFi
+                </button>
+                <button onclick="sendQuick('Something is broken in my room')" class="bg-white border border-gray-300 text-gray-700 px-3 py-1 rounded-full text-sm hover:bg-red-50 hover:border-red-400 hover:text-red-700 transition shadow-sm font-medium">
+                    🔧 Repair
+                </button>
+                <button onclick="sendQuick('I need extra towels')" class="bg-white border border-gray-300 text-gray-700 px-3 py-1 rounded-full text-sm hover:bg-teal-50 hover:border-teal-400 hover:text-teal-700 transition shadow-sm font-medium">
+                    🧼 Towels
+                </button>
+                <button onclick="sendQuick('Please clean my room')" class="bg-white border border-gray-300 text-gray-700 px-3 py-1 rounded-full text-sm hover:bg-purple-50 hover:border-purple-400 hover:text-purple-700 transition shadow-sm font-medium">
+                    🧹 Clean
+                </button>
+                <button onclick="sendQuick('I need help with luggage')" class="bg-white border border-gray-300 text-gray-700 px-3 py-1 rounded-full text-sm hover:bg-indigo-50 hover:border-indigo-400 hover:text-indigo-700 transition shadow-sm font-medium">
+                    🛎️ Luggage
+                </button>
+                <button onclick="sendQuick('When is checkout time?')" class="bg-white border border-gray-300 text-gray-700 px-3 py-1 rounded-full text-sm hover:bg-gray-100 transition shadow-sm font-medium">
+                    🕒 Checkout
+                </button>
+            </div>
+        </div>
+
+        <div class="p-4 bg-white border-t border-gray-100">
+            <div class="flex gap-2">
+                <input type="text" id="user-input" 
+                    class="flex-1 border border-gray-300 rounded-full px-4 py-2 focus:outline-none focus:border-blue-500"
+                    placeholder="Type your request..."
+                    onkeypress="if(event.key === 'Enter') sendMessage()">
+                <button onclick="sendMessage()" class="bg-blue-600 text-white rounded-full p-2 w-10 h-10 flex items-center justify-center hover:bg-blue-700 shadow-md">
+                    ➤
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // State to store guest session
+        let session = {
+            bookingId: null,
+            hotelId: null,
+            roomNumber: null,
+            guestName: null
+        };
+
+        async function verifyGuest() {
+            const hotelId = document.getElementById('hotelId').value;
+            const roomNumber = document.getElementById('roomNumber').value;
+            const lastName = document.getElementById('lastName').value;
+            const errorMsg = document.getElementById('login-error');
+
+            // Clear previous errors
+            errorMsg.classList.add('hidden');
+            errorMsg.innerText = "";
+
+            if (!hotelId || !roomNumber || !lastName) {
+                errorMsg.innerText = "Please fill in all fields.";
+                errorMsg.classList.remove('hidden');
+                return;
+            }
+
+            try {
+                const res = await fetch('/api/guest/verify', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ 
+                        hotelId: parseInt(hotelId), 
+                        roomNumber: roomNumber, 
+                        lastName: lastName 
+                    })
+                });
+
+                const data = await res.json();
+
+                if (!res.ok) {
+                    throw new Error(data.detail || data.error || "Server Error");
+                }
+                if (data.error) throw new Error(data.error);
+
+                // Success
+                session = {
+                    bookingId: data.bookingId,
+                    hotelId: data.hotelId,
+                    roomNumber: data.roomNumber,
+                    guestName: data.guestName
+                };
+
+                // Switch to Chat UI
+                document.getElementById('login-screen').classList.add('hidden');
+                document.getElementById('chat-interface').classList.remove('hidden');
+                document.getElementById('guest-details').innerText = `${session.guestName} (Room ${session.roomNumber})`;
+
+            } catch (e) {
+                console.error("Login Failed:", e);
+                errorMsg.innerText = e.message;
+                errorMsg.classList.remove('hidden');
+            }
+        }
+
+        async function sendMessage() {
+            const input = document.getElementById('user-input');
+            const message = input.value.trim();
+            if (!message) return;
+
+            // 1. UI Update
+            appendMessage('user', message);
+            input.value = '';
+
+            // 2. Loading
+            const loadingId = appendLoading();
+
+            try {
+                const res = await fetch('/api/chat/guest', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        bookingId: session.bookingId,
+                        hotelId: String(session.hotelId),
+                        roomNumber: session.roomNumber,
+                        guestName: session.guestName,
+                        message: message
+                    })
+                });
+
+                if (!res.ok) {
+                    const errorData = await res.json(); 
+                    throw new Error(errorData.detail || `Server error: ${res.status}`);
+                }
+
+                const data = await res.json();
+                removeLoading(loadingId);
+                
+                if (data.response) {
+                    appendMessage('bot', data.response);
+                } else if (data.error) {
+                    appendMessage('bot', "System: " + data.error);
+                } else {
+                    appendMessage('bot', "I received your message but couldn't generate a response.");
+                }
+
+            } catch (e) {
+                removeLoading(loadingId);
+                appendMessage('bot', "Connection error. Please try again.");
+                console.error(e);
+            }
+        }
+
+        // --- Helper for Quick Actions ---
+        function sendQuick(text) {
+            const input = document.getElementById('user-input');
+            input.value = text;
+            sendMessage();
+        }
+
+        function appendMessage(sender, text) {
+            const msgs = document.getElementById('messages');
+            const div = document.createElement('div');
+            div.className = `flex ${sender === 'user' ? 'justify-end' : 'justify-start'}`;
+            
+            const bubble = document.createElement('div');
+            bubble.className = sender === 'user' 
+                ? 'bg-blue-600 text-white rounded-lg rounded-tr-none px-4 py-2 max-w-[80%] shadow-sm'
+                : 'bg-white border border-gray-200 text-gray-800 rounded-lg rounded-tl-none px-4 py-2 max-w-[80%] shadow-sm';
+            
+            bubble.innerText = text;
+            div.appendChild(bubble);
+            msgs.appendChild(div);
+            msgs.scrollTop = msgs.scrollHeight;
+        }
+
+        function appendLoading() {
+            const id = 'loading-' + Date.now();
+            const msgs = document.getElementById('messages');
+            const div = document.createElement('div');
+            div.id = id;
+            div.className = 'flex justify-start';
+            div.innerHTML = `
+                <div class="bg-white border border-gray-200 rounded-lg rounded-tl-none px-4 py-3 shadow-sm">
+                    <div class="flex space-x-1">
+                        <div class="w-2 h-2 bg-gray-400 rounded-full animate-bounce"></div>
+                        <div class="w-2 h-2 bg-gray-400 rounded-full animate-bounce delay-75"></div>
+                        <div class="w-2 h-2 bg-gray-400 rounded-full animate-bounce delay-150"></div>
+                    </div>
+                </div>`;
+            msgs.appendChild(div);
+            msgs.scrollTop = msgs.scrollHeight;
+            return id;
+        }
+
+        function removeLoading(id) {
+            const el = document.getElementById(id);
+            if (el) el.remove();
+        }
+
+        function logout() {
+            location.reload();
+        }
+    </script>
+</body>
+</html>

@@ -1,0 +1,334 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>HotelIQ Manager Portal</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .tab-active { 
+            background-color: #2563EB; 
+            color: white; 
+            border-color: #2563EB;
+        }
+        .tab-inactive { 
+            background-color: white; 
+            color: #4B5563; 
+            border-color: #E5E7EB; 
+        }
+        .tab-inactive:hover {
+            background-color: #F3F4F6;
+        }
+    </style>
+</head>
+<body class="bg-gray-100 min-h-screen font-sans pb-12">
+
+    <div id="login-modal" class="fixed inset-0 bg-gray-900 bg-opacity-50 flex items-center justify-center z-50">
+        <div class="bg-white p-8 rounded-lg shadow-2xl w-96">
+            <h2 class="text-2xl font-bold mb-2 text-gray-800">Manager Login</h2>
+            <p class="text-gray-500 text-sm mb-6">Enter your Hotel ID to access the dashboard.</p>
+            <input type="number" id="login-hotel-id" class="w-full border border-gray-300 rounded p-2 mb-4" placeholder="e.g., 111418" value="111418">
+            <button onclick="managerLogin()" class="w-full bg-blue-800 text-white font-bold py-2 rounded hover:bg-blue-900 transition">
+                Access Dashboard
+            </button>
+        </div>
+    </div>
+
+    <div id="dashboard" class="hidden max-w-7xl mx-auto p-6">
+        <div class="flex justify-between items-center mb-8">
+            <div>
+                <h1 class="text-3xl font-bold text-gray-800">Concierge Operations</h1>
+                <p class="text-gray-500 text-sm">Hotel ID: <span id="hotel-label" class="font-semibold text-gray-700">...</span></p>
+            </div>
+            <div class="flex gap-4">
+                <button onclick="fetchData()" class="text-blue-600 font-semibold hover:underline">↻ Refresh</button>
+                <button onclick="logout()" class="text-red-600 font-semibold hover:underline">Log Out</button>
+            </div>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+            <div class="bg-white p-6 rounded-xl shadow-sm border-l-4 border-red-500">
+                <div class="text-gray-500 text-xs uppercase font-bold tracking-wide">Emergencies</div>
+                <div class="text-3xl font-bold text-red-600 mt-1" id="stat-emergency">0</div>
+            </div>
+            <div class="bg-white p-6 rounded-xl shadow-sm border-l-4 border-orange-500">
+                <div class="text-gray-500 text-xs uppercase font-bold tracking-wide">Pending Tasks</div>
+                <div class="text-3xl font-bold text-orange-600 mt-1" id="stat-pending">0</div>
+            </div>
+            <div class="bg-white p-6 rounded-xl shadow-sm border-l-4 border-green-500">
+                <div class="text-gray-500 text-xs uppercase font-bold tracking-wide">Completed Today</div>
+                <div class="text-3xl font-bold text-green-600 mt-1" id="stat-resolved">0</div>
+            </div>
+        </div>
+
+        <div class="mb-6 overflow-x-auto pb-2">
+            <div class="flex space-x-2">
+                <button onclick="setTab('all')" id="tab-all" class="tab-active px-5 py-2 rounded-full text-sm font-medium border transition-colors shadow-sm">
+                    All
+                </button>
+                <button onclick="setTab('emergency')" id="tab-emergency" class="tab-inactive px-5 py-2 rounded-full text-sm font-medium border transition-colors shadow-sm text-red-600 font-bold">
+                    🚨 Emergency
+                </button>
+                <button onclick="setTab('repair')" id="tab-repair" class="tab-inactive px-5 py-2 rounded-full text-sm font-medium border transition-colors shadow-sm">
+                    🔧 Maintenance
+                </button>
+                <button onclick="setTab('supplies')" id="tab-supplies" class="tab-inactive px-5 py-2 rounded-full text-sm font-medium border transition-colors shadow-sm">
+                    🧼 Supplies
+                </button>
+                <button onclick="setTab('cleaning')" id="tab-cleaning" class="tab-inactive px-5 py-2 rounded-full text-sm font-medium border transition-colors shadow-sm">
+                    🧹 Housekeeping
+                </button>
+                <button onclick="setTab('wifi')" id="tab-wifi" class="tab-inactive px-5 py-2 rounded-full text-sm font-medium border transition-colors shadow-sm">
+                    📶 WiFi / IT
+                </button>
+                <button onclick="setTab('porter')" id="tab-porter" class="tab-inactive px-5 py-2 rounded-full text-sm font-medium border transition-colors shadow-sm">
+                    🛎️ Porter
+                </button>
+                <button onclick="setTab('admin')" id="tab-admin" class="tab-inactive px-5 py-2 rounded-full text-sm font-medium border transition-colors shadow-sm">
+                    💼 Front Desk
+                </button>
+            </div>
+        </div>
+
+        <div class="bg-white rounded-xl shadow-sm overflow-hidden border border-gray-200 mb-8">
+            <table class="min-w-full divide-y divide-gray-200">
+                <thead class="bg-gray-50">
+                    <tr>
+                        <th class="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Room</th>
+                        <th class="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Guest</th>
+                        <th class="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider w-5/12">Request Detail</th>
+                        <th class="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Status</th>
+                        <th class="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Action</th>
+                    </tr>
+                </thead>
+                <tbody class="bg-white divide-y divide-gray-200" id="requests-table">
+                    </tbody>
+            </table>
+            <div id="empty-state" class="hidden p-12 text-center text-gray-400">
+                No requests found in this category.
+            </div>
+        </div>
+
+        <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+            <div class="flex items-start justify-between">
+                <div>
+                    <h2 class="text-lg font-bold text-gray-800 mb-1">🏨 Hotel Knowledge Base</h2>
+                    <p class="text-sm text-gray-500 mb-4">Upload a text file with daily menus, WiFi passwords, or policy updates. The AI will use this instantly.</p>
+                </div>
+                <div class="bg-blue-50 text-blue-700 px-3 py-1 rounded text-xs font-semibold">AI Context</div>
+            </div>
+            
+            <div class="flex items-center gap-4 border-t pt-4">
+                <input type="file" id="knowledge-file" accept=".txt" class="block w-full text-sm text-gray-500
+                    file:mr-4 file:py-2 file:px-4
+                    file:rounded-full file:border-0
+                    file:text-sm file:font-semibold
+                    file:bg-blue-50 file:text-blue-700
+                    hover:file:bg-blue-100
+                    cursor-pointer
+                "/>
+                <button onclick="uploadKnowledge()" class="bg-blue-700 text-white px-6 py-2 rounded-md font-bold hover:bg-blue-800 transition shadow whitespace-nowrap">
+                    Upload Update
+                </button>
+            </div>
+            <p id="upload-status" class="text-sm mt-3 font-medium"></p>
+        </div>
+
+    </div>
+
+    <script>
+        let managerHotelId = null;
+        let activeTab = 'all';
+        let allRequests = []; // Store fetched data locally for instant filtering
+
+        // Auth Logic
+        window.onload = function() {
+            const storedId = localStorage.getItem('adminHotelId');
+            if (storedId) {
+                managerHotelId = storedId;
+                showDashboard();
+            }
+        }
+
+        function managerLogin() {
+            const idInput = document.getElementById('login-hotel-id').value;
+            if (!idInput) return alert("Please enter a Hotel ID");
+            managerHotelId = idInput;
+            localStorage.setItem('adminHotelId', managerHotelId);
+            showDashboard();
+        }
+
+        function showDashboard() {
+            document.getElementById('login-modal').classList.add('hidden');
+            document.getElementById('dashboard').classList.remove('hidden');
+            document.getElementById('hotel-label').innerText = managerHotelId;
+            fetchData();
+            setInterval(fetchData, 5000); // Poll every 5s
+        }
+
+        function logout() {
+            localStorage.removeItem('adminHotelId');
+            location.reload();
+        }
+
+        // Tab Logic
+        function setTab(category) {
+            activeTab = category;
+            
+            // Update UI Styles
+            const tabs = ['all', 'emergency', 'repair', 'supplies', 'cleaning', 'wifi', 'porter', 'admin'];
+            tabs.forEach(t => {
+                const btn = document.getElementById(`tab-${t}`);
+                if (t === category) {
+                    btn.classList.remove('tab-inactive');
+                    btn.classList.add('tab-active');
+                } else {
+                    btn.classList.remove('tab-active');
+                    btn.classList.add('tab-inactive');
+                }
+            });
+
+            renderTable();
+        }
+
+        async function fetchData() {
+            if (!managerHotelId) return;
+
+            try {
+                // Fetch ALL valid requests (backend filters out 'other')
+                const url = `/api/admin/requests?hotel_id=${managerHotelId}`;
+                const res = await fetch(url);
+                allRequests = await res.json();
+                
+                updateStats();
+                renderTable();
+            } catch (e) {
+                console.error("Fetch failed", e);
+            }
+        }
+
+        function updateStats() {
+            const pending = allRequests.filter(r => r.status === 'pending').length;
+            const resolved = allRequests.filter(r => r.status === 'resolved').length;
+            const emergencies = allRequests.filter(r => r.request_type === 'emergency' && r.status === 'pending').length;
+
+            document.getElementById('stat-pending').innerText = pending;
+            document.getElementById('stat-resolved').innerText = resolved;
+            document.getElementById('stat-emergency').innerText = emergencies;
+        }
+
+        function renderTable() {
+            const tbody = document.getElementById('requests-table');
+            const emptyState = document.getElementById('empty-state');
+            tbody.innerHTML = '';
+
+            // Filter based on active tab
+            const filtered = activeTab === 'all' 
+                ? allRequests 
+                : allRequests.filter(r => r.request_type === activeTab);
+
+            if (filtered.length === 0) {
+                emptyState.classList.remove('hidden');
+                return;
+            } else {
+                emptyState.classList.add('hidden');
+            }
+
+            filtered.forEach(req => {
+                const isPending = req.status === 'pending';
+                
+                // Action Button Logic
+                const btn = isPending 
+                    ? `<button onclick="resolve(${req.id})" class="text-green-600 hover:text-white border border-green-600 hover:bg-green-600 focus:ring-4 focus:outline-none focus:ring-green-300 font-medium rounded-lg text-xs px-3 py-1.5 text-center transition">✓ Mark Done</button>` 
+                    : `<span class="text-gray-400 text-xs font-medium flex items-center gap-1">Completed</span>`;
+
+                // Status Badge Logic
+                const statusBadge = isPending 
+                    ? 'bg-yellow-100 text-yellow-800' 
+                    : 'bg-green-100 text-green-800';
+
+                // Row Highlighting for high priority
+                const rowClass = req.priority === 'high' && isPending ? 'bg-red-50' : 'hover:bg-gray-50';
+
+                const row = `
+                    <tr class="${rowClass} transition border-b last:border-0">
+                        <td class="px-6 py-4 text-sm font-semibold text-gray-900">${req.room_number}</td>
+                        <td class="px-6 py-4 text-sm text-gray-600">${req.guest_name}</td>
+                        <td class="px-6 py-4 text-sm text-gray-700">
+                            <div class="font-medium text-gray-900">${req.message_text}</div>
+                            <div class="text-xs text-gray-400 mt-1 italic">Bot: ${req.bot_response}</div>
+                        </td>
+                        <td class="px-6 py-4 text-sm">
+                            <span class="px-2.5 py-0.5 rounded-full text-xs font-semibold ${statusBadge}">
+                                ${req.status.toUpperCase()}
+                            </span>
+                        </td>
+                        <td class="px-6 py-4 text-sm">${btn}</td>
+                    </tr>
+                `;
+                tbody.innerHTML += row;
+            });
+        }
+
+        async function resolve(id) {
+            if(!confirm("Mark this request as resolved?")) return;
+            
+            const reqIndex = allRequests.findIndex(r => r.id === id);
+            if (reqIndex > -1) {
+                allRequests[reqIndex].status = 'resolved';
+                updateStats();
+                renderTable();
+            }
+
+            try {
+                await fetch(`/api/admin/requests/${id}`, {
+                    method: 'PATCH',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({status: 'resolved', assigned_to: 'Manager'})
+                });
+                fetchData();
+            } catch(e) { 
+                alert("Error updating status"); 
+                fetchData(); 
+            }
+        }
+
+        // --- NEW: Upload Knowledge Function ---
+        async function uploadKnowledge() {
+            const fileInput = document.getElementById('knowledge-file');
+            const status = document.getElementById('upload-status');
+            
+            if (!fileInput.files[0]) {
+                alert("Please select a .txt file first");
+                return;
+            }
+
+            const formData = new FormData();
+            formData.append('file', fileInput.files[0]);
+            
+            const url = `/api/admin/upload-knowledge?hotel_id=${managerHotelId}`;
+
+            status.innerText = "Uploading...";
+            status.className = "text-sm mt-3 font-medium text-blue-600";
+
+            try {
+                const res = await fetch(url, {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                if (res.ok) {
+                    status.innerText = "✅ Knowledge Base Updated Successfully! The chatbot will now use this info.";
+                    status.className = "text-sm mt-3 font-medium text-green-600";
+                    fileInput.value = ''; // Clear input
+                } else {
+                    throw new Error("Upload failed");
+                }
+            } catch (e) {
+                status.innerText = "❌ Error uploading file. Please try again.";
+                status.className = "text-sm mt-3 font-medium text-red-600";
+                console.error(e);
+            }
+        }
+    </script>
+</body>
+</html>

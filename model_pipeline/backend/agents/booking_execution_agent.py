@@ -187,18 +187,25 @@ async def booking_execution_node(state: HotelIQState) -> HotelIQState:
                             )
 
                         # 5) Build success response for the chat
-                        response_text = (
-                            f"🎉 Your booking is confirmed!\n\n"
-                            f"**Hotel:** {hotel_name}\n"
-                            f"**Booking Reference:** `{booking_reference}`\n"
-                            f"**Room Number:** {room_number}\n"
-                            f"**Check-in:** {check_in_date.strftime('%B %d, %Y')}\n"
-                            f"**Check-out:** {check_out_date.strftime('%B %d, %Y')}\n"
-                            f"**Guests:** {num_guests}\n"
-                            f"{f'**Room Type:** {room_type}' if room_type else ''}\n\n"
-                            f"A confirmation email has been sent to **{guest_email}**.\n"
-                            f"Please keep your booking reference handy for check-in and for accessing the concierge portal."
-                        )
+                        lines = [
+                            "🎉 Your booking is confirmed!\n",
+                            f"Hotel: {hotel_name}",
+                            f"Booking Reference: `{booking_reference}`",
+                            f"Room Number: {room_number}",
+                            f"Check-in: {check_in_date.strftime('%B %d, %Y')}",
+                            f"Check-out: {check_out_date.strftime('%B %d, %Y')}",
+                            f"Guests: {num_guests}",
+                        ]
+
+                        if room_type:
+                            lines.append(f"Room Type: {room_type}")
+
+                        lines.extend([
+                            f"Name: {guest_first_name} {guest_last_name}\n",
+                            f"A confirmation email has been sent to {guest_email}.",
+                            "Please keep your booking reference handy for check-in and for accessing the concierge portal."
+                        ])
+                        response_text = "\n".join(lines)
             except Exception as e:
                 logger.error("Error during booking execution", error=str(e))
                 response_text = "Something went wrong while finalizing your booking. Please try again in a moment."

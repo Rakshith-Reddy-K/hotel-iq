@@ -27,3 +27,8 @@ typing-extensions
 python-jose[cryptography]
 bcrypt
 email-validator
+asyncpg
+python-dateutil
+asyncpg
+asyncpg>=0.28.0
+python-multipart

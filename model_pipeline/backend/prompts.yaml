@@ -323,3 +323,100 @@ utils:
 
     Rewritten query (replace 'this hotel', 'that one', 'it', etc. with '{hotel_name}'):
 
+booking_collection:
+  extract_info: |
+    Extract guest information from the following message. Return ONLY valid JSON with extracted fields.
+    Current information: {current_info}
+    
+    User message: "{message}"
+    
+    Extract any of these fields if present:
+    - first_name
+    - last_name
+    - email
+    - phone
+    - check_in_date (any date format)
+    - check_out_date (any date format)
+    - num_guests (number)
+    
+    Return JSON format:
+    {{"first_name": "...", "last_name": "...", "email": "...", ...}}
+    
+    Only include fields that are clearly mentioned. Return {{}} if nothing found.
+  
+  initial_confirmation: |
+    Great choice! {hotel_name} is an excellent hotel. 
+    
+    Would you like to proceed with the booking? I'll need to collect some information from you to complete the reservation.
+  
+  cancelled: |
+    No problem! If you change your mind or would like to book a different hotel, just let me know. Is there anything else I can help you with?
+  
+  start_collection: |
+    Perfect! To complete your booking, I'll need the following information:
+    
+    1. Your full name (first and last)
+    2. Email address
+    3. Check-in and check-out dates
+    4. Number of guests
+    5. Phone number (optional but recommended)
+    
+    You can provide this information in any order, all at once, or one piece at a time. How would you like to proceed?
+  
+  request_missing: |
+    I still need the following information to complete your booking:
+    {missing_fields}
+    
+    Please provide these details when you're ready.
+  
+  final_confirmation: |
+    Excellent! Let me confirm your booking details:
+    
+    **Guest Name:** {first_name} {last_name}
+    **Email:** {email}
+    **Check-in:** {check_in}
+    **Check-out:** {check_out}
+    **Number of Guests:** {num_guests}
+    **Hotel:** {hotel_name}
+    
+    **Important:** Full payment will be required at check-in.
+    
+    Is all of this information correct? Please confirm to complete your booking.
+  
+  edit_info: |
+    No problem! Please tell me what you'd like to change, and I'll update the information.
+  
+  processing: |
+    Perfect! I'm processing your booking now. This will just take a moment...
+
+booking_execution:
+  success: |
+    🎉 **Booking Confirmed!**
+    
+    Your booking has been successfully confirmed!
+    
+    **Booking ID:** {booking_id}
+    
+    A confirmation email with all the details has been sent to {email}. Please check your inbox (and spam folder just in case).
+    
+    **Important Reminders:**
+    - Full payment is required at check-in
+    - Please bring a valid ID
+    - Check-in time is typically after 3:00 PM
+    - Check-out time is typically before 11:00 AM
+    
+    If you have any questions, please don't hesitate to ask. Have a wonderful stay!
+  
+  success_no_email: |
+    🎉 **Booking Confirmed!**
+    
+    Your booking has been successfully confirmed!
+    
+    **Booking ID:** {booking_id}
+    
+    Please save this booking ID for your records. We encountered an issue sending the confirmation email, but your reservation is confirmed.
+    
+    Is there anything else I can help you with?
+  
+  error: |
+    I apologize, but we encountered an error while processing your booking. Please try again or contact our support team for assistance.

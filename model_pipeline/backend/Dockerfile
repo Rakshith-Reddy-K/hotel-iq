@@ -24,12 +24,12 @@ RUN pip install --upgrade pip && \
 COPY . .
 
 #Comment these to run locally line 27-32
-# Create necessary directories
-RUN mkdir -p /app/data/processed /app/logs
+# # Create necessary directories
+# RUN mkdir -p /app/data/processed /app/logs
 
-# Copy pre-downloaded data files (download before Docker build)
-# This assumes you download the files in GitHub Actions before building
-COPY data/processed /app/data/processed
+# # Copy pre-downloaded data files (download before Docker build)
+# # This assumes you download the files in GitHub Actions before building
+# COPY data/processed /app/data/processed
 
 # Expose port
 EXPOSE 8000

@@ -292,8 +292,10 @@ def format_similar_hotels_response(similar_hotels: List[Document]) -> str:
             if total_reviews:
                 response += f" ({total_reviews} reviews)"
             response += "\n"
-        response += f"📝 {description}\n"
-        response += f"🔗 [View this hotel](#hotel/{hotel_id})\n\n"
+        response += f"{description}\n"
+
+        hotel_url = f"https://hotel-iq-765947304209.us-east4.run.app/{hotel_id}"
+        response += f"View this hotel: {hotel_url}\n\n"
 
     return response
 
@@ -326,6 +328,18 @@ async def comparison_node(state: HotelIQState) -> HotelIQState:
         try:
             similar_hotels = find_similar_hotels(hotel_id, top_k=3, exclude_current=True)
             answer = format_similar_hotels_response(similar_hotels)
+            
+            # Populate last_suggestions in state for reference by other agents
+            suggestions = []
+            for hotel in similar_hotels:
+                suggestions.append({
+                    "hotel_id": str(hotel.metadata.get("hotel_id", "")),
+                    "name": hotel.metadata.get("hotel_name") or hotel.metadata.get("official_name") or hotel.metadata.get("name") or "Unknown Hotel",
+                    "star_rating": str(hotel.metadata.get("star_rating", ""))
+                })
+            state["last_suggestions"] = suggestions
+            logger.info("Populated last_suggestions with similar hotels", count=len(suggestions))
+            
         except Exception as e:
             logger.error("Error finding similar hotels", error=str(e))
             answer = "I apologize, but I encountered an error while searching for similar hotels. Please try again."

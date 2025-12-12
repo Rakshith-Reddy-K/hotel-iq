@@ -64,6 +64,227 @@ def _smtp_config_ok() -> bool:
     return True
 
 
+# def generate_email_html(
+#     guest_info: GuestInfo,
+#     booking_id: str,
+#     hotel_name: str,
+#     hotel_info: Dict[str, Any],
+# ) -> str:
+#     """
+#     Generate HTML email content for booking confirmation.
+#     """
+#     check_in = guest_info.check_in_date.strftime("%B %d, %Y")
+#     check_out = guest_info.check_out_date.strftime("%B %d, %Y")
+#     nights = (guest_info.check_out_date - guest_info.check_in_date).days
+
+#     hotel_address = hotel_info.get("address", "")
+#     hotel_phone = hotel_info.get("phone", "")
+#     hotel_star = hotel_info.get("star_rating", "")
+
+#     html = f"""
+#     <!DOCTYPE html>
+#     <html>
+#     <head>
+#         <style>
+#             body {{ font-family: Arial, sans-serif; line-height: 1.6; color: #333; }}
+#             .container {{ max-width: 600px; margin: 0 auto; padding: 20px; }}
+#             .header {{ background-color: #2563eb; color: white; padding: 20px; text-align: center; }}
+#             .content {{ background-color: #f9fafb; padding: 20px; }}
+#             .booking-details {{ background-color: white; padding: 20px; margin: 20px 0; border-radius: 8px; }}
+#             .detail-row {{ display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #e5e7eb; }}
+#             .detail-label {{ font-weight: bold; }}
+#             .footer {{ text-align: center; padding: 20px; color: #6b7280; font-size: 12px; }}
+#             .button {{ background-color: #2563eb; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; display: inline-block; margin: 20px 0; }}
+#         </style>
+#     </head>
+#     <body>
+#         <div class="container">
+#             <div class="header">
+#                 <h1>Booking Confirmation</h1>
+#                 <p>Thank you for choosing HotelIQ!</p>
+#             </div>
+
+#             <div class="content">
+#                 <p>Dear {guest_info.first_name} {guest_info.last_name},</p>
+
+#                 <p>Your booking has been confirmed! We're excited to welcome you.</p>
+
+#                 <div class="booking-details">
+#                     <h2>Booking Details</h2>
+
+#                     <div class="detail-row">
+#                         <span class="detail-label">Booking ID:</span>
+#                         <span>{booking_id}</span>
+#                     </div>
+
+#                     <div class="detail-row">
+#                         <span class="detail-label">Hotel:</span>
+#                         <span>{hotel_name} {"⭐" * int(float(hotel_star)) if hotel_star else ""}</span>
+#                     </div>
+
+#                     <div class="detail-row">
+#                         <span class="detail-label">Check-in:</span>
+#                         <span>{check_in}</span>
+#                     </div>
+
+#                     <div class="detail-row">
+#                         <span class="detail-label">Check-out:</span>
+#                         <span>{check_out}</span>
+#                     </div>
+
+#                     <div class="detail-row">
+#                         <span class="detail-label">Duration:</span>
+#                         <span>{nights} night(s)</span>
+#                     </div>
+
+#                     <div class="detail-row">
+#                         <span class="detail-label">Guests:</span>
+#                         <span>{guest_info.num_guests}</span>
+#                     </div>
+
+#                     {f'<div class="detail-row"><span class="detail-label">Address:</span><span>{hotel_address}</span></div>' if hotel_address else ''}
+
+#                     {f'<div class="detail-row"><span class="detail-label">Phone:</span><span>{hotel_phone}</span></div>' if hotel_phone else ''}
+#                 </div>
+
+#                 <div style="background-color: #fef3c7; padding: 15px; border-radius: 8px; margin: 20px 0;">
+#                     <p style="margin: 0;"><strong>Important:</strong> Full payment is required at check-in. Please bring a valid ID and payment method.</p>
+#                 </div>
+
+#                 <p>If you have any questions, please contact the hotel directly or reply to this email.</p>
+
+#                 <p>We look forward to hosting you!</p>
+
+#                 <p>Best regards,<br>
+#                 The HotelIQ Team</p>
+#             </div>
+
+#             <div class="footer">
+#                 <p>This is an automated confirmation email from HotelIQ.</p>
+#                 <p>Booking Date: {datetime.now().strftime("%B %d, %Y at %I:%M %p")}</p>
+#             </div>
+#         </div>
+#     </body>
+#     </html>
+#     """
+
+#     return html
+
+# def generate_email_html(
+#     guest_info: GuestInfo,
+#     booking_id: str,
+#     hotel_name: str,
+#     hotel_info: Dict[str, Any],
+# ) -> str:
+#     """
+#     Generate HTML email content for booking confirmation.
+#     """
+#     check_in = guest_info.check_in_date.strftime("%B %d, %Y")
+#     check_out = guest_info.check_out_date.strftime("%B %d, %Y")
+#     nights = (guest_info.check_out_date - guest_info.check_in_date).days
+
+#     hotel_address = hotel_info.get("address", "")
+#     hotel_phone = hotel_info.get("phone", "")
+#     hotel_star = hotel_info.get("star_rating", "")
+
+#     html = f"""
+#     <!DOCTYPE html>
+#     <html>
+#     <head>
+#         <style>
+#             body {{ font-family: Arial, sans-serif; line-height: 1.6; color: #333; }}
+#             .container {{ max-width: 600px; margin: 0 auto; padding: 20px; }}
+#             .header {{ background-color: #2563eb; color: white; padding: 20px; text-align: center; }}
+#             .content {{ background-color: #f9fafb; padding: 20px; }}
+#             .booking-details {{ background-color: white; padding: 20px; margin: 20px 0; border-radius: 8px; }}
+#             .detail-row {{ display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #e5e7eb; }}
+#             .detail-label {{ font-weight: bold; }}
+#             .footer {{ text-align: center; padding: 20px; color: #6b7280; font-size: 12px; }}
+#             .button {{ background-color: #2563eb; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; display: inline-block; margin: 20px 0; }}
+#         </style>
+#     </head>
+#     <body>
+#         <div class="container">
+#             <div class="header">
+#                 <h1>Booking Confirmation</h1>
+#                 <p>Thank you for choosing HotelIQ!</p>
+#             </div>
+
+#             <div class="content">
+#                 <p>Dear {guest_info.first_name} {guest_info.last_name},</p>
+
+#                 <p>Your booking has been confirmed! We're excited to welcome you.</p>
+
+#                 <div class="booking-details">
+#                     <h2>Booking Details</h2>
+
+#                     <div class="detail-row">
+#                         <span class="detail-label">Booking ID:</span>
+#                         <span>{booking_id}</span>
+#                     </div>
+
+#                     <div class="detail-row">
+#                         <span class="detail-label">Hotel:</span>
+#                         <span>{hotel_name} {"⭐" * int(float(hotel_star)) if hotel_star else ""}</span>
+#                     </div>
+
+#                     <div class="detail-row">
+#                         <span class="detail-label">Check-in:</span>
+#                         <span>{check_in}</span>
+#                     </div>
+
+#                     <div class="detail-row">
+#                         <span class="detail-label">Check-out:</span>
+#                         <span>{check_out}</span>
+#                     </div>
+
+#                     <div class="detail-row">
+#                         <span class="detail-label">Duration:</span>
+#                         <span>{nights} night(s)</span>
+#                     </div>
+
+#                     <div class="detail-row">
+#                         <span class="detail-label">Guests:</span>
+#                         <span>{guest_info.num_guests}</span>
+#                     </div>
+
+#                     {f'<div class="detail-row"><span class="detail-label">Address:</span><span>{hotel_address}</span></div>' if hotel_address else ''}
+
+#                     {f'<div class="detail-row"><span class="detail-label">Phone:</span><span>{hotel_phone}</span></div>' if hotel_phone else ''}
+#                 </div>
+
+#                 <div style="background-color: #fef3c7; padding: 15px; border-radius: 8px; margin: 20px 0;">
+#                     <p style="margin: 0;"><strong>Important:</strong> Full payment is required at check-in. Please bring a valid ID and payment method.</p>
+#                 </div>
+
+#                 <div style="background-color: #e0f2fe; padding: 15px; border-radius: 8px; margin: 20px 0;">
+#                     <p style="margin: 0;">
+#                         Our digital concierge chatbot will be available for you once you check in.
+#                         It will activate on your check-in date and help you with amenities, requests, and more during your stay.
+#                     </p>
+#                     <p style="margin-top: 10px;">
+#                         You can <a href="https://hotel-iq-765947304209.us-east4.run.app/guest-login" class="button">access the chatbot here</a>.
+#                     </p>
+#                 </div>
+
+#                 <p>If you have any questions, please contact the hotel directly or reply to this email.</p>
+
+#                 <p>We look forward to hosting you!</p>
+
+#                 <p>Best regards,<br>
+#                 The HotelIQ Team</p>
+#             </div>
+
+#             <div class="footer">
+#                 <p>This is an automated confirmation email from HotelIQ.</p>
+#                 <p>Booking Date: {datetime.now().strftime("%B %d, %Y at %I:%M %p")}</p>
+#             </div>
+#         </div>
+#     </body>
+#     </html>
+#     """
+
+#     return html
 def generate_email_html(
     guest_info: GuestInfo,
     booking_id: str,
@@ -94,7 +315,6 @@ def generate_email_html(
             .detail-row {{ display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #e5e7eb; }}
             .detail-label {{ font-weight: bold; }}
             .footer {{ text-align: center; padding: 20px; color: #6b7280; font-size: 12px; }}
-            .button {{ background-color: #2563eb; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; display: inline-block; margin: 20px 0; }}
         </style>
     </head>
     <body>
@@ -151,6 +371,29 @@ def generate_email_html(
                     <p style="margin: 0;"><strong>Important:</strong> Full payment is required at check-in. Please bring a valid ID and payment method.</p>
                 </div>
 
+                <div style="background-color: #e0f2fe; padding: 15px; border-radius: 8px; margin: 20px 0;">
+                    <p style="margin: 0;">
+                        Our digital concierge chatbot will be available for you once you check in.
+                        It will activate on your check-in date and help you with amenities, requests, and more during your stay.
+                    </p>
+                    <div style="margin-top: 12px;">
+                        <a href="https://hotel-iq-765947304209.us-east4.run.app/guest-login"
+                           style="
+                                display:inline-block;
+                                padding:12px 22px;
+                                background:#ffffff;
+                                border:2px solid #2563eb;
+                                color:#2563eb;
+                                font-size:14px;
+                                font-weight:600;
+                                text-decoration:none;
+                                border-radius:6px;
+                           ">
+                            Access the chatbot
+                        </a>
+                    </div>
+                </div>
+
                 <p>If you have any questions, please contact the hotel directly or reply to this email.</p>
 
                 <p>We look forward to hosting you!</p>
@@ -169,7 +412,6 @@ def generate_email_html(
     """
 
     return html
-
 
 async def send_booking_confirmation_email(
     guest_info: GuestInfo,

@@ -212,6 +212,50 @@ class RequestUpdate(BaseModel):
 class BookingStatusUpdate(BaseModel):
     """Request model for updating booking check-in status."""
     status: str
+# Add startup event to download data
+# @app.on_event("startup")
+# async def startup_event():
+#     """Execute on application startup."""
+#     logger.info("Starting HotelIQ API...")
+#     download_processed_data()
+#     logger.info("Startup complete!")
+@app.on_event("startup")
+async def startup_event():
+    """Execute on application startup: Download data & (optionally) connect to DB."""
+    logger.info("Starting HotelIQ API...")
+    download_processed_data()
+
+    # 🔌 Skip DB if DISABLE_DB=true
+    if os.getenv("DISABLE_DB", "false").lower() == "true":
+        app.state.pool = None
+        logger.info("Database disabled via DISABLE_DB=true. Skipping DB connection.")
+        logger.info("Startup complete!")
+        return
+
+    try:
+        app.state.pool = await asyncpg.create_pool(DB_DSN)
+        logger.info(" Connected to Database (AsyncPG)")
+    except Exception as e:
+        logger.error(f" DB Connection Failed: {e}")
+        app.state.pool = None
+    logger.info("Startup complete!")
+
+
+
+# CORS configuration
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+app.include_router(auth_router, prefix="/api/v1")
+# Serve frontend static files
+if FRONTEND_DIR.exists():
+    app.mount("/static", StaticFiles(directory=str(FRONTEND_DIR)), name="static")
+else:
+    logger.warning("Frontend directory not found", path=str(FRONTEND_DIR))
 
 
 class ChatRequest(BaseModel):

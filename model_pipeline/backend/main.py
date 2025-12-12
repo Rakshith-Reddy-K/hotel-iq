@@ -41,8 +41,8 @@ from typing import Dict, Any
 from sql.queries import list_tables
 from auth_routes import auth_router
 from hotel_routes import hotel_router
-from sql.db_pool import get_connection  # ADD THIS IMPORT
-
+from sql.db_pool import get_connection
+from agents.concierge_agent import handle_resolution
 # Setup logging
 configure_logger()
 logger = get_logger(__name__)
@@ -201,7 +201,7 @@ class GuestChatRequest(BaseModel):
     roomNumber: str
     guestName: str
     message: str
-    bookingReference: Optional[str] = None  # ADD THIS
+    bookingReference: Optional[str] = None
 
 
 class RequestUpdate(BaseModel):
@@ -893,10 +893,25 @@ async def update_request(request_id: int, update: RequestUpdate):
             with conn.cursor() as cursor:
                 resolved_at = datetime.now() if update.status == 'resolved' else None
                 cursor.execute(
+                    """SELECT b.guest_email, gr.guest_name, gr.request_type, gr.message_text 
+                       FROM guest_requests gr
+                       LEFT JOIN bookings b ON gr.booking_id = b.id
+                       WHERE gr.id = %s""",
+                    (request_id,)
+                )
+                request_data = cursor.fetchone()
+                if not request_data:
+                    raise HTTPException(status_code=404, detail="Request not found")
+                guest_email, guest_name, request_type, message_text = request_data
+                cursor.execute(
                     "UPDATE guest_requests SET status = %s, assigned_to = %s, resolved_at = %s WHERE id = %s",
                     (update.status, update.assigned_to, resolved_at, request_id)
                 )
+                if update.status == 'resolved':
+                    handle_resolution(guest_email, guest_name, request_type, message_text)
         return {"status": "success", "id": request_id}
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error updating request: {e}")
         raise HTTPException(status_code=500, detail="Failed to update request")
@@ -938,9 +953,6 @@ async def get_admin_stats():
                     "checked_in": checked_in,
                     "checked_out_today": checked_out_today
                 }
-    except Exception as e:
-        logger.error(f"Error fetching stats: {e}")
-        raise HTTPException(status_code=500, detail="Failed to fetch statistics")
     except Exception as e:
         logger.error(f"Error fetching stats: {e}")
         raise HTTPException(status_code=500, detail="Failed to fetch statistics")
@@ -1001,7 +1013,7 @@ async def update_booking_status(booking_id: int, status_update: dict):
     """Admin updates booking check-in status."""
     try:
         new_status = status_update.get('status')
-        valid_statuses = ['pending', 'checked_in', 'checked_out']  # FIXED: Only valid check_in_status values
+        valid_statuses = ['pending', 'checked_in', 'checked_out']
         
         if new_status not in valid_statuses:
             raise HTTPException(status_code=400, detail=f"Invalid status. Must be one of: {valid_statuses}")

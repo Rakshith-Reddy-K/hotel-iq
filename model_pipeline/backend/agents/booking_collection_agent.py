@@ -20,6 +20,28 @@ from sql.db_pool import get_connection
 logger = get_logger(__name__)
 
 
+# def parse_date_flexible(date_str: str) -> datetime:
+#     """
+#     Parse date from various formats flexibly.
+    
+#     Handles formats like:
+#     - 12/25, 12-25, 12/25/2024
+#     - December 25, Dec 25
+#     - 25th December
+#     - tomorrow, next week, etc.
+#     """
+#     try:
+#         parsed_date = date_parser.parse(date_str, fuzzy=True)
+
+#         # If year is not specified, assume current year or next year
+#         now = datetime.now()
+#         if parsed_date.year == now.year and parsed_date < now:
+#             parsed_date = parsed_date.replace(year=parsed_date.year + 1)
+
+#         return parsed_date
+#     except Exception as e:
+#         logger.warning("Failed to parse date", date_str=date_str, error=str(e))
+#         raise ValueError(f"Could not understand date: {date_str}")
 def parse_date_flexible(date_str: str) -> datetime:
     """
     Parse date from various formats flexibly.
@@ -33,17 +55,22 @@ def parse_date_flexible(date_str: str) -> datetime:
     try:
         parsed_date = date_parser.parse(date_str, fuzzy=True)
 
-        # If year is not specified, assume current year or next year
+        # If year is not specified and date appears to be from a past month,
+        # assume next year
         now = datetime.now()
-        if parsed_date.year == now.year and parsed_date < now:
-            parsed_date = parsed_date.replace(year=parsed_date.year + 1)
+        
+        # Only adjust year if the year wasn't explicitly provided in the string
+        # and the parsed date is more than 30 days in the past
+        if parsed_date.year == now.year:
+            days_diff = (parsed_date - now).days
+            # If the date is significantly in the past (more than 30 days), assume next year
+            if days_diff < -30:
+                parsed_date = parsed_date.replace(year=parsed_date.year + 1)
 
         return parsed_date
     except Exception as e:
         logger.warning("Failed to parse date", date_str=date_str, error=str(e))
         raise ValueError(f"Could not understand date: {date_str}")
-
-
 def extract_guest_info_from_message(message: str, current_info: GuestInfo) -> tuple[GuestInfo, list[str]]:
     """
     Extract guest information from user message using LLM.
@@ -242,6 +269,145 @@ def _missing_core_fields(guest_info: GuestInfo) -> List[str]:
     return missing
 
 
+# def _validate_booking_dates(guest_info: GuestInfo) -> tuple[bool, str | None]:
+#     """
+#     Validate booking dates against business rules.
+    
+#     Rules:
+#     1. Check-in date must be in the future (not in the past)
+#     2. Cannot book more than 3 months (90 days) in advance
+#     3. Stay duration cannot exceed 14 days
+    
+#     Returns:
+#         Tuple of (is_valid, error_message)
+#         If valid: (True, None)
+#         If invalid: (False, error_message)
+#     """
+#     from datetime import timedelta
+    
+#     if not guest_info.check_in_date or not guest_info.check_out_date:
+#         return True, None  # Not enough info to validate yet
+    
+#     now = datetime.now()
+#     today = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    
+#     check_in = guest_info.check_in_date
+#     check_out = guest_info.check_out_date
+    
+#     # Remove timezone info if present for comparison
+#     if check_in.tzinfo:
+#         check_in = check_in.replace(tzinfo=None)
+#     if check_out.tzinfo:
+#         check_out = check_out.replace(tzinfo=None)
+    
+#     # Rule 1: Check-in date cannot be in the past
+#     if check_in.date() < today.date():
+#         return False, (
+#             f"❌ <b>Check-in date cannot be in the past.</b>\n\n"
+#             f"You selected {check_in.strftime('%B %d, %Y')}, but today is {today.strftime('%B %d, %Y')}.\n"
+#             f"Please provide a check-in date that is today or in the future."
+#         )
+    
+#     # Rule 2: Cannot book more than 3 months (90 days) in advance
+#     max_advance_date = today + timedelta(days=90)
+#     if check_in.date() > max_advance_date.date():
+#         return False, (
+#             f"❌ <b>Cannot book more than 3 months in advance.</b>\n\n"
+#             f"You're trying to check in on {check_in.strftime('%B %d, %Y')}, "
+#             f"but we can only accept bookings up to {max_advance_date.strftime('%B %d, %Y')}.\n"
+#             f"Please choose a check-in date within the next 3 months."
+#         )
+    
+#     # Rule 3: Stay duration cannot exceed 14 days
+#     stay_duration = (check_out - check_in).days
+#     if stay_duration > 14:
+#         return False, (
+#             f"❌ <b>Maximum stay is 14 days.</b>\n\n"
+#             f"Your selected dates ({check_in.strftime('%B %d, %Y')} to {check_out.strftime('%B %d, %Y')}) "
+#             f"would be a {stay_duration}-day stay.\n"
+#             f"Please adjust your dates to stay within the 14-day maximum."
+#         )
+    
+#     # Additional validation: Check-out must be after check-in
+#     if check_out <= check_in:
+#         return False, (
+#             f"❌ <b>Check-out date must be after check-in date.</b>\n\n"
+#             f"Check-in: {check_in.strftime('%B %d, %Y')}\n"
+#             f"Check-out: {check_out.strftime('%B %d, %Y')}\n\n"
+#             f"Please provide valid dates where check-out is after check-in."
+#         )
+    
+#     return True, None
+
+def _validate_booking_dates(guest_info: GuestInfo) -> tuple[bool, str | None]:
+    """
+    Validate booking dates against business rules.
+    
+    Rules:
+    1. Check-in date must be in the future (not in the past)
+    2. Cannot book more than 3 months (90 days) in advance
+    3. Stay duration cannot exceed 14 days
+    
+    Returns:
+        Tuple of (is_valid, error_message)
+        If valid: (True, None)
+        If invalid: (False, error_message)
+    """
+    from datetime import timedelta
+    
+    if not guest_info.check_in_date or not guest_info.check_out_date:
+        return True, None  # Not enough info to validate yet
+    
+    now = datetime.now()
+    today = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    
+    check_in = guest_info.check_in_date
+    check_out = guest_info.check_out_date
+    
+    # Remove timezone info if present for comparison
+    if check_in.tzinfo:
+        check_in = check_in.replace(tzinfo=None)
+    if check_out.tzinfo:
+        check_out = check_out.replace(tzinfo=None)
+    
+    # Additional validation: Check-out must be after check-in (check this first)
+    if check_out <= check_in:
+        return False, (
+            f"❌ **Check-out date must be after check-in date.**\n\n"
+            f"Check-in: {check_in.strftime('%B %d, %Y')}\n"
+            f"Check-out: {check_out.strftime('%B %d, %Y')}\n\n"
+            f"Please provide valid dates where check-out is after check-in."
+        )
+    
+    # Rule 1: Check-in date cannot be in the past
+    if check_in.date() < today.date():
+        return False, (
+            f"❌ **Check-in date cannot be in the past.**\n\n"
+            f"You selected {check_in.strftime('%B %d, %Y')}, but today is {today.strftime('%B %d, %Y')}.\n"
+            f"Please provide a check-in date that is today or in the future."
+        )
+    
+    # Rule 2: Cannot book more than 3 months (90 days) in advance
+    max_advance_date = today + timedelta(days=90)
+    if check_in.date() > max_advance_date.date():
+        return False, (
+            f"❌ **Cannot book more than 3 months in advance.**\n\n"
+            f"You're trying to check in on {check_in.strftime('%B %d, %Y')}, "
+            f"but we can only accept bookings up to {max_advance_date.strftime('%B %d, %Y')}.\n"
+            f"Please choose a check-in date within the next 3 months."
+        )
+    
+    # Rule 3: Stay duration cannot exceed 14 days
+    stay_duration = (check_out - check_in).days
+    if stay_duration > 14:
+        return False, (
+            f"❌ **Maximum stay is 14 days.**\n\n"
+            f"Your selected dates ({check_in.strftime('%B %d, %Y')} to {check_out.strftime('%B %d, %Y')}) "
+            f"would be a {stay_duration}-day stay.\n"
+            f"Please adjust your dates to stay within the 14-day maximum."
+        )
+    
+    return True, None
 # -------------------- MAIN BOOKING COLLECTION NODE -------------------- #
 
 async def booking_collection_node(state: HotelIQState) -> HotelIQState:
@@ -302,7 +468,7 @@ async def booking_collection_node(state: HotelIQState) -> HotelIQState:
 
         response = (
             f"{intro}\n\n"
-            f"Before we proceed, here are the room types available at **{hotel_name}**:\n"
+            f"Before we proceed, here are the room types available at <b>{hotel_name}</b>:\n"
             f"{room_list_str}\n\n"
             f"👉 Which room type would you like to book?"
         )
@@ -320,7 +486,7 @@ async def booking_collection_node(state: HotelIQState) -> HotelIQState:
         if not chosen:
             room_list_str = "\n".join(f"- {rt}" for rt in room_types)
             response = (
-                f"Got it! Just to confirm, which exact room type would you like at **{hotel_name}**?\n\n"
+                f"Got it! Just to confirm, which exact room type would you like at <b>{hotel_name}</b>?\n\n"
                 f"Available options:\n{room_list_str}\n\n"
                 f"You can reply with something like `Deluxe King Room` or `Standard Queen Room`."
             )
@@ -343,12 +509,12 @@ async def booking_collection_node(state: HotelIQState) -> HotelIQState:
             )
 
             response = (
-                f"Excellent choice! I'll book a **{chosen}** at **{hotel_name}**.\n\n"
+                f"Excellent choice! I'll book a <b>{chosen}</b> at <b>{hotel_name}</b>.\n\n"
                 f"{proceed_line}\n\n"
                 f"Please share:\n"
-                f"1. **Check-in date** (e.g., December 15, 2025)\n"
-                f"2. **Check-out date** (e.g., December 18, 2025)\n"
-                f"3. **Number of guests**\n\n"
+                f"1. <b>Check-in date</b> (e.g., December 15, 2025)\n"
+                f"2. <b>Check-out date</b> (e.g., December 18, 2025)\n"
+                f"3. <b>Number of guests</b>\n\n"
                 f"You can send this all in one message, like:\n"
                 f"`Check-in December 15, check-out December 18, 2 guests`."
             )
@@ -372,29 +538,38 @@ async def booking_collection_node(state: HotelIQState) -> HotelIQState:
             booking_state["guest_info"] = guest_info.model_dump()
 
             if _booking_details_complete(guest_info):
-                # Build our own confirmation text (no name/email)
-                room_type = (
-                    booking_state.get("room_type")
-                    or booking_state.get("selected_room_type")
-                    or "selected room type"
-                )
-
-                check_in_str = guest_info.check_in_date.strftime("%B %d, %Y")
-                check_out_str = guest_info.check_out_date.strftime("%B %d, %Y")
-                guests_str = guest_info.num_guests
-
-                response = (
-                    f"Let me confirm your booking details:\n\n"
-                    f"- **Hotel:** {hotel_name}\n"
-                    f"- **Room type:** {room_type}\n"
-                    f"- **Check-in:** {check_in_str}\n"
-                    f"- **Check-out:** {check_out_str}\n"
-                    f"- **Guests:** {guests_str}\n\n"
-                    f"Is all of this information correct? Please reply with **yes** or **no**."
-                )
-
-                booking_state["stage"] = "confirming"
-                booking_state["confirmation_pending"] = True
+                # Validate booking dates
+                is_valid, error_message = _validate_booking_dates(guest_info)
+                
+                if not is_valid:
+                    # Clear the invalid dates so user can re-enter them
+                    guest_info.check_in_date = None
+                    guest_info.check_out_date = None
+                    booking_state["guest_info"] = guest_info.model_dump()
+                    
+                    response = error_message + "\n\n" + "Please provide new check-in and check-out dates."
+                else:
+                    # Dates are valid, proceed to confirmation
+                    room_type = (
+                        booking_state.get("room_type")
+                        or booking_state.get("selected_room_type")
+                        or "selected room type"
+                    )
+                    check_in_str = guest_info.check_in_date.strftime("%B %d, %Y")
+                    check_out_str = guest_info.check_out_date.strftime("%B %d, %Y")
+                    guests_str = guest_info.num_guests
+                    
+                    response = (
+                        f"Let me confirm your booking details:\n\n"
+                        f"- <b>Hotel:</b> {hotel_name}\n"
+                        f"- <b>Room type:</b> {room_type}\n"
+                        f"- <b>Check-in:</b> {check_in_str}\n"
+                        f"- <b>Check-out:</b> {check_out_str}\n"
+                        f"- <b>Guests:</b> {guests_str}\n\n"
+                        f"Is all of this information correct? Please reply with <b>yes</b> or <b>no</b>."
+                    )
+                    booking_state["stage"] = "confirming"
+                    booking_state["confirmation_pending"] = True
             else:
                 # Ask only for missing core fields (dates/guests)
                 missing = _missing_core_fields(guest_info)

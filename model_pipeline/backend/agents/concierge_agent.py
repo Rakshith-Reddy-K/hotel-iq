@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field
 
 # Import from the same package
 from .email_service import send_email
+from .langfuse_tracking import track_agent
 
 # Load API key
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
@@ -282,6 +283,7 @@ prompt = ChatPromptTemplate.from_messages([
 
 chain = prompt | llm | parser
 
+@track_agent("concierge_agent")
 async def process_guest_message(
     message: str, 
     guest_name: str, 

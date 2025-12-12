@@ -284,19 +284,21 @@ def format_similar_hotels_response(similar_hotels: List[Document]) -> str:
         if len(hotel.page_content) > 200:
             description += "..."
 
-        # Build hotel entry
-        response += f"<b>{i}. {name}</b> ({star_display})\n"
-        response += f"📍 Location: {location}\n"
-        if overall_rating != "N/A":
-            response += f"⭐ Guest Rating: {overall_rating}/5"
-            if total_reviews:
-                response += f" ({total_reviews} reviews)"
-            response += "\n"
-        response += f"📝 {description}\n"
-        
         # Generate full frontend URL for the hotel
         hotel_url = f"https://hotel-iq-765947304209.us-east4.run.app/hotel/{hotel_id}"
-        response += f"View this hotel: {hotel_url}\n\n"
+
+        # Build structured hotel entry with each category on its own line
+        response += f"**{i}. {name}** {star_display}\n"
+        response += f"  • 📍 **Location:** {location}\n"
+        
+        if overall_rating != "N/A":
+            rating_text = f"  • ⭐ **Guest Rating:** {overall_rating}/5"
+            if total_reviews:
+                rating_text += f" ({total_reviews} reviews)"
+            response += f"{rating_text}\n"
+        
+        response += f"  • 📝 **Description:** {description}\n"
+        response += f"  • 🔗 [View this hotel →]({hotel_url})\n\n"
 
     return response
 

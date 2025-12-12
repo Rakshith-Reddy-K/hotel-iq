@@ -212,6 +212,50 @@ class RequestUpdate(BaseModel):
 class BookingStatusUpdate(BaseModel):
     """Request model for updating booking check-in status."""
     status: str
+# Add startup event to download data
+# @app.on_event("startup")
+# async def startup_event():
+#     """Execute on application startup."""
+#     logger.info("Starting HotelIQ API...")
+#     download_processed_data()
+#     logger.info("Startup complete!")
+@app.on_event("startup")
+async def startup_event():
+    """Execute on application startup: Download data & (optionally) connect to DB."""
+    logger.info("Starting HotelIQ API...")
+    download_processed_data()
+
+    # 🔌 Skip DB if DISABLE_DB=true
+    if os.getenv("DISABLE_DB", "false").lower() == "true":
+        app.state.pool = None
+        logger.info("Database disabled via DISABLE_DB=true. Skipping DB connection.")
+        logger.info("Startup complete!")
+        return
+
+    try:
+        app.state.pool = await asyncpg.create_pool(DB_DSN)
+        logger.info(" Connected to Database (AsyncPG)")
+    except Exception as e:
+        logger.error(f" DB Connection Failed: {e}")
+        app.state.pool = None
+    logger.info("Startup complete!")
+
+
+
+# CORS configuration
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+app.include_router(auth_router, prefix="/api/v1")
+# Serve frontend static files
+if FRONTEND_DIR.exists():
+    app.mount("/static", StaticFiles(directory=str(FRONTEND_DIR)), name="static")
+else:
+    logger.warning("Frontend directory not found", path=str(FRONTEND_DIR))
 
 
 class ChatRequest(BaseModel):
@@ -227,7 +271,28 @@ class ChatResponseModel(BaseModel):
     response: str
     thread_id: str
     followup_suggestions: List[str]
+# Route to return chat.html UI
+# @app.get("/chat")
+# async def chat_page():
+#     """Serve the chat interface HTML page."""
+#     return FileResponse(FRONTEND_DIR / "chat.html")
 
+from fastapi.responses import HTMLResponse
+
+@app.get("/chat", response_class=HTMLResponse)
+async def chat_page():
+    """Serve the chat interface HTML page."""
+    html_path = FRONTEND_DIR / "chat.html"
+
+    if not html_path.exists():
+        logger.error(f"chat.html not found at {html_path}")
+        return HTMLResponse(
+            content=f"<h1>chat.html not found</h1><p>Looked in: {html_path}</p>",
+            status_code=500,
+        )
+
+    with open(html_path, "r", encoding="utf-8") as f:
+        return f.read()
 
 # ======================================================
 # CHAT SERVICE

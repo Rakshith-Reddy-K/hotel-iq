@@ -470,7 +470,7 @@ async def booking_node(state: HotelIQState) -> HotelIQState:
                     
                     # Check if the suggestion name is mentioned in the user's message
                     if suggestion_name and suggestion_name in user_msg_lower:
-                        suggested_hotel_link = f"https://hotel-iq-765947304209.us-east4.run.app/{suggestion_id}"
+                        suggested_hotel_link = f"https://hotel-iq-765947304209.us-east4.run.app/hotel/{suggestion_id}"
                         logger.info(
                             "Found matching hotel in suggestions",
                             hotel_name=suggestion.get("name"),

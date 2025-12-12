@@ -292,9 +292,10 @@ def format_similar_hotels_response(similar_hotels: List[Document]) -> str:
             if total_reviews:
                 response += f" ({total_reviews} reviews)"
             response += "\n"
-        response += f"{description}\n"
-
-        hotel_url = f"https://hotel-iq-765947304209.us-east4.run.app/{hotel_id}"
+        response += f"📝 {description}\n"
+        
+        # Generate full frontend URL for the hotel
+        hotel_url = f"https://hotel-iq-765947304209.us-east4.run.app/hotel/{hotel_id}"
         response += f"View this hotel: {hotel_url}\n\n"
 
     return response

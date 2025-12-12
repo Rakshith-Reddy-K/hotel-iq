@@ -463,3 +463,45 @@ async def send_booking_confirmation_email(
     except Exception as e:
         logger.error("Failed to send booking confirmation email", error=str(e))
         return False
+
+
+def send_email(to_email: str, subject: str, body: str) -> bool:
+    """
+    Send a simple text email.
+    
+    Args:
+        to_email: Recipient email address
+        subject: Email subject
+        body: Email body (plain text)
+    
+    Returns:
+        True if email sent successfully, False otherwise
+    """
+    if not _smtp_config_ok():
+        logger.warning("SMTP not configured, skipping email", to_email=to_email)
+        return False
+
+    try:
+        # Create message
+        msg = MIMEText(body, "plain")
+        msg["From"] = f"{SENDER_NAME} <{SENDER_EMAIL}>"
+        msg["To"] = to_email
+        msg["Subject"] = subject
+
+        # Send email
+        if SMTP_USE_TLS:
+            with smtplib.SMTP(SMTP_HOST, SMTP_PORT) as server:
+                server.starttls()
+                server.login(SMTP_USERNAME, SMTP_PASSWORD)
+                server.send_message(msg)
+        else:
+            with smtplib.SMTP_SSL(SMTP_HOST, SMTP_PORT) as server:
+                server.login(SMTP_USERNAME, SMTP_PASSWORD)
+                server.send_message(msg)
+
+        logger.info("Email sent", to_email=to_email, subject=subject)
+        return True
+
+    except Exception as e:
+        logger.error("Failed to send email", error=str(e), to_email=to_email)
+        return False

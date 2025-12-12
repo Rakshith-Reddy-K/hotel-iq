@@ -7,8 +7,8 @@ from langchain_core.output_parsers import JsonOutputParser
 from langchain_core.messages import HumanMessage, AIMessage
 from pydantic import BaseModel, Field
 
-# Ensure this import path matches your project structure
-from model_pipeline.backend.agents.email_service import send_email
+# Import from the same package
+from .email_service import send_email
 
 # Load API key
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")

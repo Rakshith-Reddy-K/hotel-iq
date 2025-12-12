@@ -63,12 +63,12 @@ def handle_resolution(guest_email, guest_name, request_type, request_details):
     body = f"""
     Dear {guest_name},
 
-    We have received your request regarding: {request_type}.
-    
+    Your request regarding {request_type} has been successfully completed.
+
     Details: {request_details}
-    
-    Our team is attending to it immediately. You will receive an update shortly.
-    
+
+    If you experience any issues or need further assistance, please feel free to let us know, we’re here to help.
+
     Warm regards,
     HotelIQ Concierge
     """

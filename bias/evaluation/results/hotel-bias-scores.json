@@ -1,0 +1,178 @@
+{
+  "287606": {
+    "hotel_id": "287606",
+    "num_reviews": 583,
+    "avg_rating": 4.1200686106346485,
+    "bias_detected": false,
+    "bias_types": [],
+    "error": "Error code: 401 - {'error': {'message': \"You didn't provide an API key. You need to provide your API key in an Authorization header using Bearer auth (i.e. Authorization: Bearer YOUR_KEY), or as the password field (with blank username) if you're accessing the API from your browser and are prompted for a username and password. You can obtain an API key from https://platform.openai.com/account/api-keys.\", 'type': 'invalid_request_error', 'param': None, 'code': None}}"
+  },
+  "220216": {
+    "hotel_id": "220216",
+    "num_reviews": 82,
+    "avg_rating": 4.134146341463414,
+    "bias_detected": false,
+    "bias_types": [],
+    "error": "Error code: 401 - {'error': {'message': \"You didn't provide an API key. You need to provide your API key in an Authorization header using Bearer auth (i.e. Authorization: Bearer YOUR_KEY), or as the password field (with blank username) if you're accessing the API from your browser and are prompted for a username and password. You can obtain an API key from https://platform.openai.com/account/api-keys.\", 'type': 'invalid_request_error', 'param': None, 'code': None}}"
+  },
+  "89602": {
+    "hotel_id": "89602",
+    "num_reviews": 1314,
+    "avg_rating": 3.841704718417047,
+    "bias_detected": false,
+    "bias_types": [],
+    "error": "Error code: 401 - {'error': {'message': \"You didn't provide an API key. You need to provide your API key in an Authorization header using Bearer auth (i.e. Authorization: Bearer YOUR_KEY), or as the password field (with blank username) if you're accessing the API from your browser and are prompted for a username and password. You can obtain an API key from https://platform.openai.com/account/api-keys.\", 'type': 'invalid_request_error', 'param': None, 'code': None}}"
+  },
+  "111422": {
+    "hotel_id": "111422",
+    "num_reviews": 424,
+    "avg_rating": 3.9622641509433962,
+    "bias_detected": false,
+    "bias_types": [],
+    "error": "Error code: 401 - {'error': {'message': \"You didn't provide an API key. You need to provide your API key in an Authorization header using Bearer auth (i.e. Authorization: Bearer YOUR_KEY), or as the password field (with blank username) if you're accessing the API from your browser and are prompted for a username and password. You can obtain an API key from https://platform.openai.com/account/api-keys.\", 'type': 'invalid_request_error', 'param': None, 'code': None}}"
+  },
+  "94326": {
+    "hotel_id": "94326",
+    "num_reviews": 821,
+    "avg_rating": 3.936662606577345,
+    "bias_detected": false,
+    "bias_types": [],
+    "error": "Error code: 401 - {'error': {'message': \"You didn't provide an API key. You need to provide your API key in an Authorization header using Bearer auth (i.e. Authorization: Bearer YOUR_KEY), or as the password field (with blank username) if you're accessing the API from your browser and are prompted for a username and password. You can obtain an API key from https://platform.openai.com/account/api-keys.\", 'type': 'invalid_request_error', 'param': None, 'code': None}}"
+  },
+  "320038": {
+    "hotel_id": "320038",
+    "num_reviews": 228,
+    "avg_rating": 3.732456140350877,
+    "bias_detected": false,
+    "bias_types": [],
+    "error": "Error code: 401 - {'error': {'message': \"You didn't provide an API key. You need to provide your API key in an Authorization header using Bearer auth (i.e. Authorization: Bearer YOUR_KEY), or as the password field (with blank username) if you're accessing the API from your browser and are prompted for a username and password. You can obtain an API key from https://platform.openai.com/account/api-keys.\", 'type': 'invalid_request_error', 'param': None, 'code': None}}"
+  },
+  "111441": {
+    "hotel_id": "111441",
+    "num_reviews": 922,
+    "avg_rating": 3.772234273318872,
+    "bias_detected": false,
+    "bias_types": [],
+    "error": "Error code: 401 - {'error': {'message': \"You didn't provide an API key. You need to provide your API key in an Authorization header using Bearer auth (i.e. Authorization: Bearer YOUR_KEY), or as the password field (with blank username) if you're accessing the API from your browser and are prompted for a username and password. You can obtain an API key from https://platform.openai.com/account/api-keys.\", 'type': 'invalid_request_error', 'param': None, 'code': None}}"
+  },
+  "121009": {
+    "hotel_id": "121009",
+    "num_reviews": 362,
+    "avg_rating": 3.820441988950276,
+    "bias_detected": false,
+    "bias_types": [],
+    "error": "Error code: 401 - {'error': {'message': \"You didn't provide an API key. You need to provide your API key in an Authorization header using Bearer auth (i.e. Authorization: Bearer YOUR_KEY), or as the password field (with blank username) if you're accessing the API from your browser and are prompted for a username and password. You can obtain an API key from https://platform.openai.com/account/api-keys.\", 'type': 'invalid_request_error', 'param': None, 'code': None}}"
+  },
+  "549445": {
+    "hotel_id": "549445",
+    "num_reviews": 465,
+    "avg_rating": 3.643010752688172,
+    "bias_detected": false,
+    "bias_types": [],
+    "error": "Error code: 401 - {'error': {'message': \"You didn't provide an API key. You need to provide your API key in an Authorization header using Bearer auth (i.e. Authorization: Bearer YOUR_KEY), or as the password field (with blank username) if you're accessing the API from your browser and are prompted for a username and password. You can obtain an API key from https://platform.openai.com/account/api-keys.\", 'type': 'invalid_request_error', 'param': None, 'code': None}}"
+  },
+  "217550": {
+    "hotel_id": "217550",
+    "num_reviews": 512,
+    "avg_rating": 3.552734375,
+    "bias_detected": false,
+    "bias_types": [],
+    "error": "Error code: 401 - {'error': {'message': \"You didn't provide an API key. You need to provide your API key in an Authorization header using Bearer auth (i.e. Authorization: Bearer YOUR_KEY), or as the password field (with blank username) if you're accessing the API from your browser and are prompted for a username and password. You can obtain an API key from https://platform.openai.com/account/api-keys.\", 'type': 'invalid_request_error', 'param': None, 'code': None}}"
+  },
+  "222957": {
+    "hotel_id": "222957",
+    "num_reviews": 257,
+    "avg_rating": 3.575875486381323,
+    "bias_detected": false,
+    "bias_types": [],
+    "error": "Error code: 401 - {'error': {'message': \"You didn't provide an API key. You need to provide your API key in an Authorization header using Bearer auth (i.e. Authorization: Bearer YOUR_KEY), or as the password field (with blank username) if you're accessing the API from your browser and are prompted for a username and password. You can obtain an API key from https://platform.openai.com/account/api-keys.\", 'type': 'invalid_request_error', 'param': None, 'code': None}}"
+  },
+  "555224": {
+    "hotel_id": "555224",
+    "num_reviews": 194,
+    "avg_rating": 3.9278350515463916,
+    "bias_detected": false,
+    "bias_types": [],
+    "error": "Error code: 401 - {'error': {'message': \"You didn't provide an API key. You need to provide your API key in an Authorization header using Bearer auth (i.e. Authorization: Bearer YOUR_KEY), or as the password field (with blank username) if you're accessing the API from your browser and are prompted for a username and password. You can obtain an API key from https://platform.openai.com/account/api-keys.\", 'type': 'invalid_request_error', 'param': None, 'code': None}}"
+  },
+  "94372": {
+    "hotel_id": "94372",
+    "num_reviews": 392,
+    "avg_rating": 3.4107142857142856,
+    "bias_detected": false,
+    "bias_types": [],
+    "error": "Error code: 401 - {'error': {'message': \"You didn't provide an API key. You need to provide your API key in an Authorization header using Bearer auth (i.e. Authorization: Bearer YOUR_KEY), or as the password field (with blank username) if you're accessing the API from your browser and are prompted for a username and password. You can obtain an API key from https://platform.openai.com/account/api-keys.\", 'type': 'invalid_request_error', 'param': None, 'code': None}}"
+  },
+  "94363": {
+    "hotel_id": "94363",
+    "num_reviews": 184,
+    "avg_rating": 3.7010869565217392,
+    "bias_detected": false,
+    "bias_types": [],
+    "error": "Error code: 401 - {'error': {'message': \"You didn't provide an API key. You need to provide your API key in an Authorization header using Bearer auth (i.e. Authorization: Bearer YOUR_KEY), or as the password field (with blank username) if you're accessing the API from your browser and are prompted for a username and password. You can obtain an API key from https://platform.openai.com/account/api-keys.\", 'type': 'invalid_request_error', 'param': None, 'code': None}}"
+  },
+  "217546": {
+    "hotel_id": "217546",
+    "num_reviews": 459,
+    "avg_rating": 3.503267973856209,
+    "bias_detected": false,
+    "bias_types": [],
+    "error": "Error code: 401 - {'error': {'message': \"You didn't provide an API key. You need to provide your API key in an Authorization header using Bearer auth (i.e. Authorization: Bearer YOUR_KEY), or as the password field (with blank username) if you're accessing the API from your browser and are prompted for a username and password. You can obtain an API key from https://platform.openai.com/account/api-keys.\", 'type': 'invalid_request_error', 'param': None, 'code': None}}"
+  },
+  "94368": {
+    "hotel_id": "94368",
+    "num_reviews": 363,
+    "avg_rating": 3.5509641873278235,
+    "bias_detected": false,
+    "bias_types": [],
+    "error": "Error code: 401 - {'error': {'message': \"You didn't provide an API key. You need to provide your API key in an Authorization header using Bearer auth (i.e. Authorization: Bearer YOUR_KEY), or as the password field (with blank username) if you're accessing the API from your browser and are prompted for a username and password. You can obtain an API key from https://platform.openai.com/account/api-keys.\", 'type': 'invalid_request_error', 'param': None, 'code': None}}"
+  },
+  "111418": {
+    "hotel_id": "111418",
+    "num_reviews": 2091,
+    "avg_rating": 3.378287900526064,
+    "bias_detected": false,
+    "bias_types": [],
+    "error": "Error code: 401 - {'error': {'message': \"You didn't provide an API key. You need to provide your API key in an Authorization header using Bearer auth (i.e. Authorization: Bearer YOUR_KEY), or as the password field (with blank username) if you're accessing the API from your browser and are prompted for a username and password. You can obtain an API key from https://platform.openai.com/account/api-keys.\", 'type': 'invalid_request_error', 'param': None, 'code': None}}"
+  },
+  "1138709": {
+    "hotel_id": "1138709",
+    "num_reviews": 103,
+    "avg_rating": 3.3689320388349513,
+    "bias_detected": false,
+    "bias_types": [],
+    "error": "Error code: 401 - {'error': {'message': \"You didn't provide an API key. You need to provide your API key in an Authorization header using Bearer auth (i.e. Authorization: Bearer YOUR_KEY), or as the password field (with blank username) if you're accessing the API from your browser and are prompted for a username and password. You can obtain an API key from https://platform.openai.com/account/api-keys.\", 'type': 'invalid_request_error', 'param': None, 'code': None}}"
+  },
+  "120977": {
+    "hotel_id": "120977",
+    "num_reviews": 157,
+    "avg_rating": 3.1337579617834397,
+    "bias_detected": false,
+    "bias_types": [],
+    "error": "Error code: 401 - {'error': {'message': \"You didn't provide an API key. You need to provide your API key in an Authorization header using Bearer auth (i.e. Authorization: Bearer YOUR_KEY), or as the password field (with blank username) if you're accessing the API from your browser and are prompted for a username and password. You can obtain an API key from https://platform.openai.com/account/api-keys.\", 'type': 'invalid_request_error', 'param': None, 'code': None}}"
+  },
+  "217148": {
+    "hotel_id": "217148",
+    "num_reviews": 307,
+    "avg_rating": 2.964169381107492,
+    "bias_detected": false,
+    "bias_types": [],
+    "error": "Error code: 401 - {'error': {'message': \"You didn't provide an API key. You need to provide your API key in an Authorization header using Bearer auth (i.e. Authorization: Bearer YOUR_KEY), or as the password field (with blank username) if you're accessing the API from your browser and are prompted for a username and password. You can obtain an API key from https://platform.openai.com/account/api-keys.\", 'type': 'invalid_request_error', 'param': None, 'code': None}}"
+  },
+  "268206": {
+    "hotel_id": "268206",
+    "num_reviews": 71,
+    "avg_rating": 3.1549295774647885,
+    "bias_detected": false,
+    "bias_types": [],
+    "error": "Error code: 401 - {'error': {'message': \"You didn't provide an API key. You need to provide your API key in an Authorization header using Bearer auth (i.e. Authorization: Bearer YOUR_KEY), or as the password field (with blank username) if you're accessing the API from your browser and are prompted for a username and password. You can obtain an API key from https://platform.openai.com/account/api-keys.\", 'type': 'invalid_request_error', 'param': None, 'code': None}}"
+  },
+  "89619": {
+    "hotel_id": "89619",
+    "num_reviews": 462,
+    "avg_rating": 3.034632034632035,
+    "bias_detected": false,
+    "bias_types": [],
+    "error": "Error code: 401 - {'error': {'message': \"You didn't provide an API key. You need to provide your API key in an Authorization header using Bearer auth (i.e. Authorization: Bearer YOUR_KEY), or as the password field (with blank username) if you're accessing the API from your browser and are prompted for a username and password. You can obtain an API key from https://platform.openai.com/account/api-keys.\", 'type': 'invalid_request_error', 'param': None, 'code': None}}"
+  }
+}

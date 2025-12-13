@@ -1,0 +1,283 @@
+# ======================================================
+# HotelIQ .gitignore
+# ======================================================
+
+# ======================================================
+# Environment & Secrets (NEVER COMMIT)
+# ======================================================
+.env
+.env.local
+.env.*.local
+backend/config/gcp-service-account.json
+backend/config/*.json
+
+*.pem
+*.key
+
+# ======================================================
+# Data Files
+# ======================================================
+data/
+*.csv
+*.jsonl
+*.db
+*.sqlite
+*.sqlite3
+booking_requests.json
+
+# ======================================================
+# Python
+# ======================================================
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Distribution / packaging
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual environments
+venv/
+env/
+ENV/
+.venv/
+backend/.venv/
+backend/venv/
+
+# PyInstaller
+*.manifest
+*.spec
+
+# Unit test / coverage reports
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+.pytest_cache/
+cover/
+
+# Jupyter Notebook
+.ipynb_checkpoints
+*.ipynb
+
+# IPython
+profile_default/
+ipython_config.py
+
+# pyenv
+.python-version
+
+# Celery
+celerybeat-schedule
+celerybeat.pid
+
+# SageMath parsed files
+*.sage.py
+
+# Spyder project settings
+.spyderproject
+.spyproject
+
+# Rope project settings
+.ropeproject
+
+# mkdocs documentation
+/site
+
+# mypy
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# Pyre type checker
+.pyre/
+
+# pytype static type analyzer
+.pytype/
+
+# Cython debug symbols
+cython_debug/
+
+# ======================================================
+# Docker
+# ======================================================
+docker-compose.override.yml
+
+# ======================================================
+# IDEs & Editors
+# ======================================================
+# VSCode
+.vscode/
+*.code-workspace
+
+# PyCharm
+.idea/
+*.iml
+*.iws
+.idea_modules/
+
+# Sublime Text
+*.sublime-project
+*.sublime-workspace
+
+# Vim
+*.swp
+*.swo
+*~
+.vim/
+
+# Emacs
+*~
+\#*\#
+/.emacs.desktop
+/.emacs.desktop.lock
+*.elc
+
+# Eclipse
+.project
+.pydevproject
+.settings/
+
+# ======================================================
+# Operating System Files
+# ======================================================
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+.DocumentRevisions-V100
+.fseventsd
+.Spotlight-V100
+.TemporaryItems
+.Trashes
+.VolumeIcon.icns
+.com.apple.timemachine.donotpresent
+.AppleDB
+.AppleDesktop
+Network Trash Folder
+Temporary Items
+.apdisk
+
+# Windows
+Thumbs.db
+Thumbs.db:encryptable
+ehthumbs.db
+ehthumbs_vista.db
+*.stackdump
+[Dd]esktop.ini
+$RECYCLE.BIN/
+*.cab
+*.msi
+*.msix
+*.msm
+*.msp
+*.lnk
+
+# Linux
+.directory
+.Trash-*
+.nfs*
+
+# ======================================================
+# Logs
+# ======================================================
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+.pnpm-debug.log*
+
+# ======================================================
+# Temporary Files
+# ======================================================
+tmp/
+temp/
+*.tmp
+*.bak
+*.backup
+.DS_Store?
+
+# ======================================================
+# Node (if using frontend build tools)
+# ======================================================
+node_modules/
+npm-debug.log
+yarn.lock
+package-lock.json
+
+# ======================================================
+# Pinecone & Vector Store
+# ======================================================
+*.index
+*.faiss
+chroma_db/
+vector_store/
+
+# ======================================================
+# Machine Learning Models
+# ======================================================
+*.pkl
+*.pickle
+*.h5
+*.onnx
+*.pb
+models/
+checkpoints/
+
+# ======================================================
+# Testing
+# ======================================================
+.tox/
+.coverage
+htmlcov/
+*.cover
+
+# ======================================================
+# Documentation Build
+# ======================================================
+docs/_build/
+docs/.doctrees/
+
+# ======================================================
+# Backup Files
+# ======================================================
+backups/
+*.backup
+*.old
+
+# ======================================================
+# Custom Application Files
+# ======================================================
+# Uncomment if you want to ignore these:
+# processed_*.csv
+# *_hotels.csv
+# *_reviews.csv
+

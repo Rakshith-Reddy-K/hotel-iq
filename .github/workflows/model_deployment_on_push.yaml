@@ -1,0 +1,329 @@
+name: CD - Deploy to Production
+
+on:
+  push:
+    branches:
+      - production
+
+env:
+  PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+  REGION: ${{ vars.GCP_REGION }}
+  SERVICE_NAME: ${{ vars.SERVICE_NAME }}
+  ENVIRONMENT: production
+  GAR_REPOSITORY: ${{ vars.GAR_REPOSITORY }}
+  REGISTRY: ${{ vars.GCP_REGION }}-docker.pkg.dev
+  HOTEL_INDEX_NAME: ${{ vars.HOTEL_INDEX_NAME }}
+  REVIEWS_INDEX_NAME: ${{ vars.REVIEWS_INDEX_NAME }}
+  GCS_BUCKET_NAME: ${{ vars.GCS_BUCKET_NAME }}
+  HOTEL_SMTP_USERNAME: ${{ vars.HOTEL_SMTP_USERNAME }}
+  HOTEL_SMTP_PASSWORD: ${{ secrets.HOTEL_SMTP_PASSWORD }}
+  HOTEL_SMTP_FROM_EMAIL: ${{ vars.HOTEL_SMTP_FROM_EMAIL }}
+  HOTEL_SMTP_FROM_NAME: ${{ vars.HOTEL_SMTP_FROM_NAME }}
+  HOTEL_SMTP_USE_TLS: ${{ vars.HOTEL_SMTP_USE_TLS }}
+  TIMEOUT: 300
+  PORT: 8000
+  CPU: 1
+  MEMORY: 2Gi
+  MAX_INSTANCES: 10
+  MIN_INSTANCES: 1
+  CONCURRENCY: 10
+
+jobs:
+  check-branch-sync:
+    name: Check Branch Synchronization
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check if production is up to date with dev
+        run: |
+          git fetch origin dev:dev
+          BEHIND_COUNT=$(git rev-list --count production..dev)
+
+          if [ "$BEHIND_COUNT" -gt 0 ]; then
+            echo "Production branch is $BEHIND_COUNT commits behind dev branch"
+            echo "Please merge or rebase dev into production first"
+            exit 1
+          fi
+
+          echo "Production branch is up to date with dev"
+
+  run-tests:
+    name: Run Backend Tests
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: ./model_pipeline/backend
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.10"
+
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run tests
+        continue-on-error: true
+        id: pytest
+        env:
+          GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+          PINECONE_API_KEY: ${{ secrets.PINECONE_API_KEY }}
+          LANGFUSE_PUBLIC_KEY: ${{ secrets.LANGFUSE_PUBLIC_KEY }}
+        run: |
+          pytest tests/test_ci.py \
+            -v \
+            --tb=short \
+            --cov=. \
+            --cov-report=xml \
+            --cov-report=term-missing \
+            | tee pytest-output.txt
+
+          echo "exit_code=$?" >> $GITHUB_OUTPUT
+
+      - name: Generate summary
+        if: always()
+        id: summary
+        run: |
+          # Count results
+          TOTAL=$(grep -oP '\d+(?= passed)' pytest-output.txt || echo "0")
+          FAILED=$(grep -oP '\d+(?= failed)' pytest-output.txt || echo "0")
+          SKIPPED=$(grep -oP '\d+(?= skipped)' pytest-output.txt || echo "0")
+          PASSED=$((TOTAL - FAILED - SKIPPED))
+
+          # Get coverage
+          COVERAGE=$(grep -oP '\d+%' pytest-output.txt | tail -1 || echo "0%")
+
+          # Get duration
+          DURATION=$(grep -oP '[\d.]+s' pytest-output.txt | tail -1 || echo "0s")
+
+          # Create comment
+          if [ "$FAILED" = "0" ]; then
+            STATUS="✅ All Tests Passed"
+            EMOJI="🎉"
+          else
+            STATUS="❌ Tests Failed"
+            EMOJI="⚠️"
+          fi
+
+          # Build comment for PR
+          COMMENT="### ${EMOJI} Backend Tests
+
+          | Status | Passed | Failed | Skipped | Coverage | Duration |
+          |--------|--------|--------|---------|----------|----------|
+          | ${STATUS} | ✅ ${PASSED} | ❌ ${FAILED} | ⏭️ ${SKIPPED} | 📊 ${COVERAGE} | ⏱️ ${DURATION} |"
+
+          # ======================================
+          # LOG TO JOB RUN (appears in Actions log)
+          # ======================================
+          echo ""
+          echo "========================================="
+          echo "${EMOJI} Backend Test Results"
+          echo "========================================="
+          echo "Status:   ${STATUS}"
+          echo "Passed:   ${PASSED}"
+          echo "Failed:   ${FAILED}"
+          echo "Skipped:  ${SKIPPED}"
+          echo "Coverage: ${COVERAGE}"
+          echo "Duration: ${DURATION}"
+          echo "========================================="
+          echo ""
+
+          # ======================================
+          # ADD TO GITHUB STEP SUMMARY (appears in job summary page)
+          # ======================================
+          echo "### ${EMOJI} Backend Tests" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Status | Passed | Failed | Skipped | Coverage | Duration |" >> $GITHUB_STEP_SUMMARY
+          echo "|--------|--------|--------|---------|----------|----------|" >> $GITHUB_STEP_SUMMARY
+          echo "| ${STATUS} | ✅ ${PASSED} | ❌ ${FAILED} | ⏭️ ${SKIPPED} | 📊 ${COVERAGE} | ⏱️ ${DURATION} |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          # ======================================
+          # SAVE TO OUTPUT (for PR comment)
+          # ======================================
+          echo "comment<<EOF" >> $GITHUB_OUTPUT
+          echo "$COMMENT" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+  commit-bias-results:
+    name: Commit Bias Detection Results
+    needs: [check-branch-sync, run-tests]
+    runs-on: ubuntu-latest
+    if: "!contains(github.event.head_commit.message, '[skip ci]')"
+
+    permissions:
+      contents: write
+
+    defaults:
+      run:
+        working-directory: ./bias
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+          cache: "pip"
+          cache-dependency-path: "bias/requirements.txt"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Create output directory
+        run: mkdir -p evaluation/results
+
+      - name: Run bias detection
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          PINECONE_API_KEY: ${{ secrets.PINECONE_API_KEY }}
+          PINECONE_INDEX_HOST: ${{ secrets.PINECONE_INDEX_HOST }}
+          SENDER_EMAIL: ${{ vars.SENDER_EMAIL }}
+          SENDER_PASSWORD: ${{ secrets.SENDER_PASSWORD }}
+          RECEIVER_EMAIL: ${{ vars.RECEIVER_EMAIL }}
+          SMTP_SERVER: ${{ vars.SMTP_SERVER }}
+          SMTP_PORT: ${{ vars.SMTP_PORT }}
+        run: python pipeline/stage_bias_detection.py
+        continue-on-error: true
+
+      - name: Verify results
+        id: verify
+        run: |
+          if [ -f "evaluation/results/bias-summary.json" ]; then
+            echo "results_found=true" >> $GITHUB_OUTPUT
+            echo "Bias detection results found"
+            cat evaluation/results/bias-summary.json | python -m json.tool
+          else
+            echo "results_found=false" >> $GITHUB_OUTPUT
+            echo "No bias detection results found"
+          fi
+
+      - name: Commit bias results to production
+        if: steps.verify.outputs.results_found == 'true'
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: "chore: update bias detection results [skip ci]"
+          file_pattern: "bias/evaluation/results/*"
+          commit_user_name: "github-actions[bot]"
+          commit_user_email: "github-actions[bot]@users.noreply.github.com"
+          branch: production
+
+  build-and-deploy:
+    name: Build and Deploy
+    needs: [check-branch-sync, run-tests, commit-bias-results]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Configure Docker for GCP
+        run: |
+          gcloud auth configure-docker ${{ env.REGISTRY }}
+
+      - name: Generate version tags
+        id: tags
+        run: |
+          TIMESTAMP=$(date +%Y%m%d-%H%M%S)
+          SHORT_SHA=$(echo ${{ github.sha }} | cut -c1-7)
+          VERSION_TAG="${TIMESTAMP}-${SHORT_SHA}"
+          REVISION_TAG="v-${SHORT_SHA}"
+          echo "timestamp=${TIMESTAMP}" >> $GITHUB_OUTPUT
+          echo "version_tag=${VERSION_TAG}" >> $GITHUB_OUTPUT
+          echo "short_sha=${SHORT_SHA}" >> $GITHUB_OUTPUT
+          echo "revision_tag=${REVISION_TAG}" >> $GITHUB_OUTPUT
+
+      - name: Download data files before build
+        run: |
+          cd model_pipeline/backend
+          mkdir -p data/processed/boston
+
+          # Use authenticated gcloud to download
+          gsutil -m cp gs://${{ env.GCS_BUCKET_NAME }}/processed/boston/*.csv data/processed/boston/
+
+          ls -lh data/processed/boston/
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./model_pipeline/backend
+          file: ./model_pipeline/backend/Dockerfile
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.PROJECT_ID }}/${{ env.GAR_REPOSITORY }}/${{ env.SERVICE_NAME }}-${{ env.ENVIRONMENT }}:${{ steps.tags.outputs.version_tag }}
+            ${{ env.REGISTRY }}/${{ env.PROJECT_ID }}/${{ env.GAR_REPOSITORY }}/${{ env.SERVICE_NAME }}-${{ env.ENVIRONMENT }}:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Deploy to Cloud Run
+        run: |
+          gcloud run deploy ${{ env.SERVICE_NAME }}-${{ env.ENVIRONMENT }} \
+            --image=${{ env.REGISTRY }}/${{ env.PROJECT_ID }}/${{ env.GAR_REPOSITORY }}/${{ env.SERVICE_NAME }}-${{ env.ENVIRONMENT }}:${{ steps.tags.outputs.version_tag }} \
+            --region=${{ env.REGION }} \
+            --project=${{ env.PROJECT_ID }} \
+            --platform=managed \
+            --allow-unauthenticated \
+            --memory=${{ env.MEMORY }} \
+            --cpu=${{ env.CPU }} \
+            --port=${{ env.PORT }} \
+            --timeout=${{ env.TIMEOUT }} \
+            --min-instances=${{ env.MIN_INSTANCES }} \
+            --max-instances=${{ env.MAX_INSTANCES }} \
+            --concurrency=${{ env.CONCURRENCY }} \
+            --add-cloudsql-instances=${{ env.PROJECT_ID }}:${{ env.REGION }}:hotel-iq \
+            --set-env-vars="VERSION=${{ steps.tags.outputs.version_tag }},ENV=${{ env.ENVIRONMENT }},REGION=${{ env.REGION }},SERVICE_NAME=${{ env.SERVICE_NAME }},HOTEL_INDEX_NAME=${{ env.HOTEL_INDEX_NAME }},REVIEWS_INDEX_NAME=${{ env.REVIEWS_INDEX_NAME }},GCS_BUCKET_NAME=${{ env.GCS_BUCKET_NAME }},GCP_PROJECT_ID=${{ env.PROJECT_ID }},GCP_INSTANCE_NAME=${{ env.PROJECT_ID }},CLOUD_DB_HOST=/cloudsql/${{ env.PROJECT_ID }}:${{ env.REGION }}:hotel-iq,CLOUD_DB_PORT=5432,CLOUD_DB_NAME=postgres,HOTEL_SMTP_USERNAME=${{ env.HOTEL_SMTP_USERNAME }},HOTEL_SMTP_PASSWORD=${{ env.HOTEL_SMTP_PASSWORD }},HOTEL_SMTP_FROM_EMAIL=${{ env.HOTEL_SMTP_FROM_EMAIL }},HOTEL_SMTP_FROM_NAME=${{ env.HOTEL_SMTP_FROM_NAME }},HOTEL_SMTP_USE_TLS=${{ env.HOTEL_SMTP_USE_TLS }}" \
+            --set-secrets="GOOGLE_API_KEY=GOOGLE_API_KEY:latest,OPENAI_API_KEY=OPENAI_API_KEY:latest,PINECONE_API_KEY=PINECONE_API_KEY:latest,LANGFUSE_SECRET_KEY=LANGFUSE_SECRET_KEY:latest,LANGFUSE_PUBLIC_KEY=LANGFUSE_PUBLIC_KEY:latest,LANGFUSE_BASE_URL=LANGFUSE_BASE_URL:latest,CLOUD_DB_USER=CLOUD_DB_USER:latest,CLOUD_DB_PASSWORD=CLOUD_DB_PASSWORD:latest" \
+            --quiet
+
+      - name: Get service URL
+        id: service-url
+        run: |
+          URL=$(gcloud run services describe ${{ env.SERVICE_NAME }}-${{ env.ENVIRONMENT }} \
+            --region=${{ env.REGION }} \
+            --format='value(status.url)')
+          echo "url=${URL}" >> $GITHUB_OUTPUT
+          echo "Service deployed to: ${URL}"
+
+      - name: Deployment summary
+        run: |
+          echo "##Deployment Successful" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- **Environment**: ${{ env.ENVIRONMENT }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Service**: ${{ env.SERVICE_NAME }}-${{ env.ENVIRONMENT }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Version**: ${{ steps.tags.outputs.version_tag }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Region**: ${{ env.REGION }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **URL**: ${{ steps.service-url.outputs.url }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Image**: ${{ env.REGISTRY }}/${{ env.PROJECT_ID }}/${{ env.SERVICE_NAME }}-${{ env.ENVIRONMENT }}:${{ steps.tags.outputs.version_tag }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Resources**: ${{ env.MEMORY }} / ${{ env.CPU }} CPU" >> $GITHUB_STEP_SUMMARY
+          echo "- **Instances**: ${{ env.MIN_INSTANCES }}-${{ env.MAX_INSTANCES }}" >> $GITHUB_STEP_SUMMARY

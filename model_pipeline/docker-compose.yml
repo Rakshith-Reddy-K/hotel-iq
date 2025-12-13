@@ -1,0 +1,101 @@
+version: "3.8"
+
+services:
+  # HotelIQ Backend API
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: hoteliq-backend
+    ports:
+      - "8000:8000"
+    environment:
+      # AI/ML Services
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - PINECONE_API_KEY=${PINECONE_API_KEY}
+      - HOTEL_INDEX_NAME=${HOTEL_INDEX_NAME:-hoteliq-hotels}
+      - REVIEWS_INDEX_NAME=${REVIEWS_INDEX_NAME:-hoteliq-reviews}
+      # GCP Configuration
+      - GCP_PROJECT_ID=${GCP_PROJECT_ID}
+      - GCS_BUCKET_NAME=${GCS_BUCKET_NAME}
+      - GCP_REGION=${GCP_REGION:-us-central1}
+      - GCP_INSTANCE_NAME=${GCP_INSTANCE_NAME}
+      - GOOGLE_APPLICATION_CREDENTIALS=/app/config/gcp-service-account.json
+      # Data Configuration
+      - CITY=${CITY:-boston}
+      - ENVIRONMENT=${ENVIRONMENT:-development}
+      - CLOUD_DB_HOST=${CLOUD_DB_HOST}
+      - CLOUD_DB_PORT=${CLOUD_DB_PORT:-5432}
+      - CLOUD_DB_NAME=${CLOUD_DB_NAME}
+      - CLOUD_DB_USER=${CLOUD_DB_USER}
+      - CLOUD_DB_PASSWORD=${CLOUD_DB_PASSWORD}
+    volumes:
+      # Mount code for hot reload in development
+      - ./backend:/app
+      - ./frontend:/app/frontend
+      # GCP credentials (read-only)
+      - ./backend/config:/app/config:ro
+      # Data directory (will be populated from GCS on startup)
+      - ./data:/app/data
+      # Persistent logs
+      - hoteliq-logs:/app/logs
+      # Preserve booking requests
+      - ./booking_requests.json:/app/booking_requests.json
+    networks:
+      - hoteliq-network
+    restart: unless-stopped
+    depends_on:
+      - redis
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # Redis for caching (optional but recommended)
+  redis:
+    image: redis:7-alpine
+    container_name: hoteliq-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    networks:
+      - hoteliq-network
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Nginx for production (optional - reverse proxy)
+  nginx:
+    image: nginx:alpine
+    container_name: hoteliq-nginx
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/ssl:/etc/nginx/ssl:ro
+      - ./frontend:/usr/share/nginx/html/static:ro
+    networks:
+      - hoteliq-network
+    depends_on:
+      - backend
+    restart: unless-stopped
+    profiles:
+      - production
+
+volumes:
+  hoteliq-logs:
+    driver: local
+  redis-data:
+    driver: local
+
+networks:
+  hoteliq-network:
+    driver: bridge
